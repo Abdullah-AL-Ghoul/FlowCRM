@@ -14,6 +14,11 @@ export interface AuthSession {
   isDemo: boolean;
 }
 
+export interface SignUpResult {
+  session: AuthSession | null;
+  needsEmailConfirmation: boolean;
+}
+
 const DEMO_SESSION_KEY = 'flowcrm_demo_session';
 
 class AuthService {
@@ -62,7 +67,12 @@ class AuthService {
     return this.enterDemoMode(email);
   }
 
-  async signUp(email: string, password: string, fullName: string, workspaceName: string): Promise<AuthSession> {
+  async signUp(
+    email: string,
+    password: string,
+    fullName: string,
+    workspaceName: string
+  ): Promise<SignUpResult> {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -70,42 +80,48 @@ class AuthService {
         options: {
           data: {
             full_name: fullName,
+            workspace_name: workspaceName,
           },
+          emailRedirectTo: `${window.location.origin}/`,
         },
       });
       if (error) throw error;
       if (!data.user) throw new Error('Sign up failed');
 
-      // Create workspace for user
-      const slug = workspaceName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.floor(Math.random() * 1000);
-      const { data: wsData, error: wsError } = await (supabase
-        .from('workspaces') as any)
-        .insert({
-          name: workspaceName,
-          slug,
-        })
-        .select()
-        .single();
+      // If Supabase returned an active session (email confirmation disabled or auto-confirmed)
+      if (data.session) {
+        const slug = workspaceName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.floor(Math.random() * 1000);
+        const { data: wsData, error: wsError } = await (supabase
+          .from('workspaces') as any)
+          .insert({
+            name: workspaceName,
+            slug,
+          })
+          .select()
+          .single();
 
-      if (wsError) throw wsError;
+        if (!wsError && wsData) {
+          await (supabase
+            .from('workspace_members') as any)
+            .insert({
+              workspace_id: wsData.id,
+              user_id: data.user.id,
+              role: 'owner',
+            });
+        }
 
-      // Add user as owner
-      const { error: memberError } = await (supabase
-        .from('workspace_members') as any)
-        .insert({
-          workspace_id: wsData.id,
-          user_id: data.user.id,
-          role: 'owner',
-        });
+        crmService.setDemoMode(false);
+        const session = await this.fetchUserData(data.user.id, email);
+        return { session, needsEmailConfirmation: false };
+      }
 
-      if (memberError) throw memberError;
-
-      crmService.setDemoMode(false);
-      return await this.fetchUserData(data.user.id, email);
+      // Email confirmation is required by Supabase Auth policy
+      return { session: null, needsEmailConfirmation: true };
     }
 
     // Demo Mode Sign Up
-    return this.enterDemoMode(email, fullName, workspaceName);
+    const demoSession = await this.enterDemoMode(email, fullName, workspaceName);
+    return { session: demoSession, needsEmailConfirmation: false };
   }
 
   async enterDemoMode(email?: string, fullName?: string, workspaceName?: string): Promise<AuthSession> {
@@ -145,6 +161,15 @@ class AuthService {
     await new Promise(r => setTimeout(r, 600));
   }
 
+  async updatePassword(newPassword: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      return;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+
   async signOut(): Promise<void> {
     if (isSupabaseConfigured) {
       await supabase.auth.signOut().catch(() => {});
@@ -155,29 +180,77 @@ class AuthService {
 
   private async fetchUserData(userId: string, email: string): Promise<AuthSession> {
     // 1. Fetch Profile
-    const { data: profileData, error: profileErr } = await supabase
+    const { data: profileData } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    if (profileErr) throw profileErr;
+    const resolvedProfile: Profile = profileData || {
+      id: userId,
+      email,
+      full_name: email.split('@')[0],
+      avatar_url: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
 
     // 2. Fetch Workspace Membership
-    const { data: memberData, error: memberErr } = await supabase
+    let { data: memberData } = await supabase
       .from('workspace_members')
       .select('*, workspace:workspaces(*)')
       .eq('user_id', userId)
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (memberErr) throw memberErr;
+    // If user has no workspace yet (e.g. first login after email confirmation)
+    if (!memberData) {
+      const wsName = resolvedProfile.full_name ? `${resolvedProfile.full_name}'s Workspace` : 'My Sales Workspace';
+      const slug = 'ws-' + userId.slice(0, 8) + '-' + Math.floor(Math.random() * 1000);
+
+      const { data: newWs, error: wsError } = await (supabase
+        .from('workspaces') as any)
+        .insert({
+          name: wsName,
+          slug,
+        })
+        .select()
+        .single();
+
+      if (!wsError && newWs) {
+        await (supabase
+          .from('workspace_members') as any)
+          .insert({
+            workspace_id: newWs.id,
+            user_id: userId,
+            role: 'owner',
+          });
+
+        memberData = {
+          id: `member-${userId}`,
+          workspace_id: newWs.id,
+          user_id: userId,
+          role: 'owner',
+          created_at: new Date().toISOString(),
+          workspace: newWs,
+        } as any;
+      } else {
+        // Fallback to demo workspace to prevent locking out user
+        return {
+          user: { id: userId, email },
+          profile: resolvedProfile,
+          workspace: initialDemoWorkspace,
+          role: 'owner',
+          isDemo: false,
+        };
+      }
+    }
 
     return {
       user: { id: userId, email },
-      profile: profileData,
-      workspace: (memberData as any).workspace,
-      role: (memberData as any).role as WorkspaceRole,
+      profile: resolvedProfile,
+      workspace: (memberData as any).workspace || initialDemoWorkspace,
+      role: ((memberData as any).role as WorkspaceRole) || 'owner',
       isDemo: false,
     };
   }

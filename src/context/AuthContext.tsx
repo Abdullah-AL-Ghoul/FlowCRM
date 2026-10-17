@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authService, AuthSession } from '../services/authService';
+import { authService, AuthSession, SignUpResult } from '../services/authService';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 interface AuthContextType {
@@ -7,9 +7,10 @@ interface AuthContextType {
   loading: boolean;
   isSupabaseConfigured: boolean;
   signIn: (email: string, password?: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string, workspaceName: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, workspaceName: string) => Promise<SignUpResult>;
   enterDemoMode: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -43,11 +44,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string, workspaceName: string) => {
+  const signUp = async (email: string, password: string, fullName: string, workspaceName: string): Promise<SignUpResult> => {
     setLoading(true);
     try {
-      const newSession = await authService.signUp(email, password, fullName, workspaceName);
-      setSession(newSession);
+      const result = await authService.signUp(email, password, fullName, workspaceName);
+      if (result.session) {
+        setSession(result.session);
+      }
+      return result;
     } finally {
       setLoading(false);
     }
@@ -65,6 +69,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPassword = async (email: string) => {
     await authService.resetPassword(email);
+  };
+
+  const updatePassword = async (password: string) => {
+    await authService.updatePassword(password);
   };
 
   const signOut = async () => {
@@ -87,6 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signUp,
         enterDemoMode,
         resetPassword,
+        updatePassword,
         signOut,
       }}
     >
