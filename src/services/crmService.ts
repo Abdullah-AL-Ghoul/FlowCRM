@@ -22,8 +22,8 @@ import {
 } from './demoData';
 import { isTaskDueToday, isTaskOverdue } from '../lib/utils';
 
-// Local storage key for persistent demo mutations
-const DEMO_STORAGE_KEY = 'flowcrm_demo_data_v1';
+// Local storage key for persistent demo mutations (v2 with expanded dataset)
+const DEMO_STORAGE_KEY = 'flowcrm_demo_data_v2';
 
 interface DemoStorageState {
   workspace: Workspace;
