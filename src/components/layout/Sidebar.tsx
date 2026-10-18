@@ -15,7 +15,11 @@ import { useI18n } from '../../i18n/I18nContext';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
 
-export const Sidebar: React.FC = () => {
+export interface SidebarProps {
+  onToggleCopilot?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onToggleCopilot }) => {
   const { t } = useI18n();
   const { session } = useAuth();
 
@@ -50,6 +54,24 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* FlowAI Copilot Quick Launcher in Sidebar */}
+      {onToggleCopilot && (
+        <div className="px-3 pt-4">
+          <button
+            onClick={onToggleCopilot}
+            className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 to-brand-gold/25 border border-brand-gold/40 text-brand-gold hover:border-brand-gold hover:brightness-110 transition-all text-xs font-bold shadow-xs cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-brand-gold animate-pulse" />
+              <span className="text-white">FlowAI Copilot</span>
+            </div>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-gold/20 text-brand-goldPale border border-brand-gold/30">
+              AI
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Navigation Links */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">

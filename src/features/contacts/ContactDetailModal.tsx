@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
@@ -6,7 +6,11 @@ import { Contact } from '../../types/crm.types';
 import { useCRM } from '../../context/CRMContext';
 import { useI18n } from '../../i18n/I18nContext';
 import { formatCurrency, formatDate } from '../../lib/utils';
-import { Mail, Phone, Building, Briefcase, CheckSquare, Edit } from 'lucide-react';
+import { Mail, Phone, Building, Briefcase, CheckSquare, Edit, MessageSquare } from 'lucide-react';
+import { ContactAIPanel } from '../ai/components/ContactAIPanel';
+import { LeadScoreBadge } from '../ai/components/LeadScoreBadge';
+import { LeadScoringService } from '../ai/services/leadScoringService';
+import { AISalesWriterModal } from '../ai/components/AISalesWriterModal';
 
 export interface ContactDetailModalProps {
   isOpen: boolean;
@@ -21,13 +25,23 @@ export const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
   contact,
   onEdit,
 }) => {
-  const { deals, tasks } = useCRM();
+  const { deals, tasks, activities } = useCRM();
   const { t, locale } = useI18n();
+  const [salesWriterOpen, setSalesWriterOpen] = useState(false);
 
   if (!contact) return null;
 
   const associatedDeals = deals.filter(d => d.contact_id === contact.id);
   const associatedTasks = tasks.filter(t => t.contact_id === contact.id);
+  const associatedActivities = activities.filter(a => a.contact_id === contact.id);
+
+  const leadScore = LeadScoringService.calculateLeadScore(
+    contact,
+    associatedDeals,
+    associatedTasks,
+    associatedActivities,
+    locale === 'ar' ? 'ar' : 'en'
+  );
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
@@ -45,38 +59,50 @@ export const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={contact.full_name}
-      description={contact.job_title ? `${contact.job_title} at ${contact.company || 'N/A'}` : contact.company || undefined}
-      size="lg"
-    >
-      <div className="space-y-6">
-        {/* Header Badges & Actions */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <Badge variant={getStatusBadgeVariant(contact.status)}>
-              {t(`contacts.statuses.${contact.status}`)}
-            </Badge>
-            {contact.lead_source && (
-              <Badge variant="neutral">
-                Source: {t(`contacts.sources.${contact.lead_source}`, contact.lead_source)}
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={contact.full_name}
+        description={contact.job_title ? `${contact.job_title} at ${contact.company || 'N/A'}` : contact.company || undefined}
+        size="lg"
+      >
+        <div className="space-y-6">
+          {/* Header Badges & Actions */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={getStatusBadgeVariant(contact.status)}>
+                {t(`contacts.statuses.${contact.status}`)}
               </Badge>
-            )}
+              <LeadScoreBadge score={leadScore} />
+              {contact.lead_source && (
+                <Badge variant="neutral">
+                  Source: {t(`contacts.sources.${contact.lead_source}`, contact.lead_source)}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="gold"
+                size="sm"
+                onClick={() => setSalesWriterOpen(true)}
+                icon={<MessageSquare className="w-3.5 h-3.5" />}
+              >
+                {locale === 'ar' ? 'صياغة رسالة' : 'Draft Message'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onEdit(contact);
+                }}
+                icon={<Edit className="w-3.5 h-3.5" />}
+              >
+                {t('common.edit')}
+              </Button>
+            </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              onClose();
-              onEdit(contact);
-            }}
-            icon={<Edit className="w-3.5 h-3.5" />}
-          >
-            {t('common.edit')}
-          </Button>
-        </div>
 
         {/* Contact Info Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
@@ -169,7 +195,23 @@ export const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Contextual FlowAI Intelligence Panel */}
+        <ContactAIPanel
+          contact={contact}
+          onOpenSalesWriter={() => setSalesWriterOpen(true)}
+        />
       </div>
     </Modal>
+
+    {salesWriterOpen && (
+      <AISalesWriterModal
+        isOpen={salesWriterOpen}
+        onClose={() => setSalesWriterOpen(false)}
+        initialContact={contact}
+      />
+    )}
+  </>
   );
 };
+

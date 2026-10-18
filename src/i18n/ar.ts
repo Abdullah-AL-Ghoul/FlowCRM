@@ -247,4 +247,14 @@ export const ar = {
       sales_rep: 'إضافة ومتابعة جهات الاتصال والصفقات والمهام المسندة إليه.',
     },
   },
+  flowai: {
+    title: 'FlowAI',
+    copilot: 'المساعد الذكي FlowAI',
+    salesWriter: 'كاتب المبيعات الذكي',
+    meetingIntel: 'ذكاء الاجتماعات',
+    dataQuality: 'مركز جودة البيانات',
+    leadScoring: 'تقييم العملاء المحتملين',
+    groundedNotice: 'إجابات مستندة حصراً إلى بيانات CRM الموثقة',
+  },
 };
+

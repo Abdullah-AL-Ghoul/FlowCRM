@@ -4,6 +4,8 @@ import { useI18n } from '../../i18n/I18nContext';
 import { Deal, DealStage } from '../../types/crm.types';
 import { KanbanColumn } from './KanbanColumn';
 import { DealFormModal } from './DealFormModal';
+import { DealDetailModal } from './DealDetailModal';
+import { AISalesWriterModal } from '../ai/components/AISalesWriterModal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
@@ -18,6 +20,9 @@ export const DealsKanbanPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [dealToView, setDealToView] = useState<Deal | null>(null);
+  const [salesWriterOpen, setSalesWriterOpen] = useState(false);
   const [defaultStage, setDefaultStage] = useState<DealStage>('new');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [dealToDelete, setDealToDelete] = useState<Deal | null>(null);
@@ -40,6 +45,11 @@ export const DealsKanbanPage: React.FC = () => {
   const handleEditDeal = (deal: Deal) => {
     setSelectedDeal(deal);
     setFormModalOpen(true);
+  };
+
+  const handleViewDeal = (deal: Deal) => {
+    setDealToView(deal);
+    setDetailModalOpen(true);
   };
 
   const handleCreateDeal = (stage: DealStage = 'new') => {
@@ -87,7 +97,15 @@ export const DealsKanbanPage: React.FC = () => {
             {t('deals.subtitle')}
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSalesWriterOpen(true)}
+            icon={<Sparkles className="w-4 h-4 text-brand-gold" />}
+          >
+            {locale === 'ar' ? 'كاتب المبيعات' : 'Sales Writer'}
+          </Button>
           <Button
             variant="gold"
             size="sm"
@@ -156,7 +174,7 @@ export const DealsKanbanPage: React.FC = () => {
               stage={stage}
               title={t(`deals.stages.${stage}`)}
               deals={stageDeals}
-              onEditDeal={handleEditDeal}
+              onEditDeal={handleViewDeal}
               onDeleteDeal={handleDeletePrompt}
               onStageChange={handleStageChange}
               onDropDeal={handleDropDeal}
@@ -173,6 +191,27 @@ export const DealsKanbanPage: React.FC = () => {
         deal={selectedDeal}
         defaultStage={defaultStage}
       />
+
+      {/* Deal Detail & Intelligence Modal */}
+      {detailModalOpen && (
+        <DealDetailModal
+          isOpen={detailModalOpen}
+          onClose={() => setDetailModalOpen(false)}
+          deal={dealToView}
+          onEdit={deal => {
+            setDetailModalOpen(false);
+            handleEditDeal(deal);
+          }}
+        />
+      )}
+
+      {/* Sales Writer Modal */}
+      {salesWriterOpen && (
+        <AISalesWriterModal
+          isOpen={salesWriterOpen}
+          onClose={() => setSalesWriterOpen(false)}
+        />
+      )}
 
       {/* Delete Confirmation */}
       <ConfirmDialog

@@ -20,6 +20,7 @@ import {
   Cell,
   Tooltip,
 } from 'recharts';
+import { NLAnalyticsSection } from '../ai/components/NLAnalyticsSection';
 
 export const ReportsPage: React.FC = () => {
   const { contacts, deals, metrics, stageBreakdown } = useCRM();
@@ -140,6 +141,9 @@ export const ReportsPage: React.FC = () => {
         </div>
         <Badge variant="gold" size="sm">CWE-1236 Protected</Badge>
       </div>
+
+      {/* FlowAI Natural-Language Analytics Section */}
+      <NLAnalyticsSection />
 
       {/* High-Level Conversion Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

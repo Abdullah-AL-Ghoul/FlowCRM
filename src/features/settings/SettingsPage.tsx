@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   LogOut,
 } from 'lucide-react';
+import { AISettingsSection } from '../ai/components/AISettingsSection';
 
 export const SettingsPage: React.FC = () => {
   const { session, signOut } = useAuth();
@@ -201,6 +202,9 @@ export const SettingsPage: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* FlowAI Provider & Cost Control Settings */}
+      <AISettingsSection />
 
       {/* Demo Operations & Session Actions */}
       <Card>

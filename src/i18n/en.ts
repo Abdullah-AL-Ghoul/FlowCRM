@@ -247,4 +247,14 @@ export const en = {
       sales_rep: 'Creates and manages assigned contacts, deals, and daily tasks.',
     },
   },
+  flowai: {
+    title: 'FlowAI',
+    copilot: 'FlowAI Copilot',
+    salesWriter: 'Sales Writer',
+    meetingIntel: 'Meeting Intelligence',
+    dataQuality: 'Data Quality Hub',
+    leadScoring: 'Lead Scoring',
+    groundedNotice: 'Grounded against authorized CRM data only',
+  },
 };
+

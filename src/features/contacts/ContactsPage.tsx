@@ -24,10 +24,16 @@ import {
   Mail,
   Phone,
   Building,
+  ShieldAlert,
+  Sparkles,
 } from 'lucide-react';
+import { DataQualityModal } from '../ai/components/DataQualityModal';
+import { AISalesWriterModal } from '../ai/components/AISalesWriterModal';
+import { LeadScoreBadge } from '../ai/components/LeadScoreBadge';
+import { LeadScoringService } from '../ai/services/leadScoringService';
 
 export const ContactsPage: React.FC = () => {
-  const { contacts, deleteContact, loading } = useCRM();
+  const { contacts, deals, tasks, activities, deleteContact, loading } = useCRM();
   const { t, locale } = useI18n();
 
   const [search, setSearch] = useState('');
@@ -39,6 +45,9 @@ export const ContactsPage: React.FC = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [dataQualityOpen, setDataQualityOpen] = useState(false);
+  const [salesWriterOpen, setSalesWriterOpen] = useState(false);
+
 
   // Filter and search contacts
   const filteredContacts = useMemo(() => {
@@ -143,7 +152,23 @@ export const ContactsPage: React.FC = () => {
             {t('contacts.subtitle')}
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDataQualityOpen(true)}
+            icon={<ShieldAlert className="w-4 h-4 text-amber-600" />}
+          >
+            {locale === 'ar' ? 'جودة البيانات' : 'Data Quality Hub'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSalesWriterOpen(true)}
+            icon={<Sparkles className="w-4 h-4 text-brand-gold" />}
+          >
+            {locale === 'ar' ? 'كاتب المبيعات' : 'Sales Writer'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -254,7 +279,18 @@ export const ContactsPage: React.FC = () => {
                       <p className="text-[10px] text-slate-400 truncate mt-0.5">{contact.job_title}</p>
                     </td>
                     <td className="py-3.5 px-4">
-                      {getStatusBadge(contact.status)}
+                      <div className="flex flex-col gap-1.5 items-start">
+                        {getStatusBadge(contact.status)}
+                        <LeadScoreBadge
+                          score={LeadScoringService.calculateLeadScore(
+                            contact,
+                            deals.filter(d => d.contact_id === contact.id),
+                            tasks.filter(t => t.contact_id === contact.id),
+                            activities.filter(a => a.contact_id === contact.id),
+                            locale === 'ar' ? 'ar' : 'en'
+                          )}
+                        />
+                      </div>
                     </td>
                     <td className="py-3.5 px-4">
                       <span className="text-xs text-slate-700 font-medium">
@@ -322,6 +358,22 @@ export const ContactsPage: React.FC = () => {
         onConfirm={confirmDelete}
         loading={isDeleting}
       />
+
+      {/* Data Quality & Hygiene Modal */}
+      {dataQualityOpen && (
+        <DataQualityModal
+          isOpen={dataQualityOpen}
+          onClose={() => setDataQualityOpen(false)}
+        />
+      )}
+
+      {/* Sales Writer Modal */}
+      {salesWriterOpen && (
+        <AISalesWriterModal
+          isOpen={salesWriterOpen}
+          onClose={() => setSalesWriterOpen(false)}
+        />
+      )}
     </div>
   );
 };

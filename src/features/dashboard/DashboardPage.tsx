@@ -18,6 +18,7 @@ import {
   FileText,
   GitCommit,
   Plus,
+  Sparkles,
 } from 'lucide-react';
 import { ContactFormModal } from '../contacts/ContactFormModal';
 import { DealFormModal } from '../deals/DealFormModal';
@@ -129,6 +130,30 @@ export const DashboardPage: React.FC = () => {
               : undefined
           }
         />
+      </div>
+
+      {/* FlowAI Executive Assistant Insight Banner */}
+      <div className="p-4 rounded-xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white border border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-brand-gold/20 text-brand-gold flex items-center justify-center shrink-0 border border-brand-gold/30 mt-0.5">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-bold tracking-tight text-white">
+                {locale === 'ar' ? 'رؤية FlowAI الذكية للمبيعات' : 'FlowAI Executive Workspace Pulse'}
+              </h4>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-brand-gold/20 text-brand-goldPale font-medium border border-brand-gold/30">
+                Grounded
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+              {locale === 'ar'
+                ? `لديك ${metrics.activeDealsCount} صفقة نشطة بقيمة ${formatCurrency(metrics.openPipelineValue, 'USD', locale)}، مع ${metrics.tasksOverdue} مهام متأخرة تتطلب المتابعة الفورية لضمان نسبة إغلاق مثالية.`
+                : `Active pipeline stands at ${metrics.activeDealsCount} opportunities worth ${formatCurrency(metrics.openPipelineValue, 'USD', locale)}. ${metrics.tasksOverdue > 0 ? `${metrics.tasksOverdue} follow-ups are currently overdue.` : 'All task follow-ups are on schedule.'}`}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Visual Analytics & Recent Activities */}
