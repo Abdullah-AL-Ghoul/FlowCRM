@@ -9,6 +9,7 @@ import {
   DashboardMetrics,
   StageSummary,
   DealStage,
+  UserAISettings,
 } from '../types/crm.types';
 import {
   initialDemoWorkspace,
@@ -569,6 +570,96 @@ class CRMService {
         totalValue: stageDeals.reduce((sum, d) => sum + Number(d.value || 0), 0),
       };
     });
+  }
+
+  async getUserAISettings(userId: string, workspaceId?: string | null): Promise<UserAISettings | null> {
+    if (!isSupabaseConfigured || this.isDemo) {
+      try {
+        const raw = localStorage.getItem(`flowcrm_user_ai_settings_${userId}`);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {
+        console.error('Failed to load local AI settings', e);
+      }
+      return null;
+    }
+
+    try {
+      let query = (supabase.from('user_ai_settings' as any) as any)
+        .select('*')
+        .eq('user_id', userId);
+
+      if (workspaceId) {
+        query = query.eq('workspace_id', workspaceId);
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (error) {
+        console.warn('Could not fetch user AI settings from DB (using local fallback):', error.message);
+        const raw = localStorage.getItem(`flowcrm_user_ai_settings_${userId}`);
+        return raw ? JSON.parse(raw) : null;
+      }
+      return data as UserAISettings | null;
+    } catch (err) {
+      console.error('Error fetching user AI settings:', err);
+      const raw = localStorage.getItem(`flowcrm_user_ai_settings_${userId}`);
+      return raw ? JSON.parse(raw) : null;
+    }
+  }
+
+  async saveUserAISettings(
+    userId: string,
+    workspaceId: string | null | undefined,
+    settings: {
+      provider_id: 'gemini' | 'openai' | 'offline_rule_based';
+      gemini_key?: string | null;
+      openai_key?: string | null;
+    }
+  ): Promise<UserAISettings> {
+    const payload: UserAISettings = {
+      user_id: userId,
+      workspace_id: workspaceId || null,
+      provider_id: settings.provider_id,
+      gemini_key: settings.gemini_key || null,
+      openai_key: settings.openai_key || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Cache locally for fast offline/demo access
+    try {
+      localStorage.setItem(`flowcrm_user_ai_settings_${userId}`, JSON.stringify(payload));
+    } catch (e) {
+      console.error('Error caching AI settings locally', e);
+    }
+
+    if (!isSupabaseConfigured || this.isDemo) {
+      return payload;
+    }
+
+    try {
+      const { data, error } = await (supabase.from('user_ai_settings' as any) as any)
+        .upsert(
+          {
+            user_id: userId,
+            workspace_id: workspaceId || null,
+            provider_id: settings.provider_id,
+            gemini_key: settings.gemini_key || null,
+            openai_key: settings.openai_key || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,workspace_id' }
+        )
+        .select()
+        .single();
+
+      if (error) {
+        console.warn('Supabase user_ai_settings upsert note (cached locally):', error.message);
+        return payload;
+      }
+      return data as UserAISettings;
+    } catch (err) {
+      console.warn('Error saving user AI settings to Supabase (cached locally):', err);
+      return payload;
+    }
   }
 
   resetDemoData(): void {

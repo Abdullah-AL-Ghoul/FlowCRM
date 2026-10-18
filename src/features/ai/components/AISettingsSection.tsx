@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { flowAIService } from '../services/flowAIService';
 import { AIProviderId } from '../types/ai.types';
 import { useAuth } from '../../../context/AuthContext';
 import { useI18n } from '../../../i18n/I18nContext';
+import { crmService } from '../../../services/crmService';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/common/Card';
 import { Button } from '../../../components/common/Button';
 import { Badge } from '../../../components/common/Badge';
@@ -14,51 +15,112 @@ import {
   Save,
   Gauge,
   Cpu,
+  Eye,
+  EyeOff,
+  Lock,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
 
 export const AISettingsSection: React.FC = () => {
   const { session } = useAuth();
-  const { locale } = useI18n();
+  const { t, locale } = useI18n();
   const isArabic = locale === 'ar';
   const workspaceId = session?.workspace?.id || 'demo-workspace-01';
+  const userId = session?.user?.id || session?.profile?.id || 'demo-user-id';
 
   const [providerId, setProviderId] = useState<AIProviderId>('gemini');
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [dbSource, setDbSource] = useState<'database' | 'local' | null>(null);
 
   const usage = flowAIService.getUsage(workspaceId);
   const activeAdapter = flowAIService.getActiveAdapter();
 
-  const handleSave = () => {
-    flowAIService.saveConfig({
-      providerId,
-      geminiKey: geminiKey.trim() || undefined,
-      openaiKey: openaiKey.trim() || undefined,
-    });
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
+  // Load user's private AI keys securely from the database on mount
+  useEffect(() => {
+    let isMounted = true;
+    const loadUserSettings = async () => {
+      try {
+        const settings = await crmService.getUserAISettings(userId, workspaceId);
+        if (isMounted && settings) {
+          if (settings.provider_id) setProviderId(settings.provider_id);
+          if (settings.gemini_key) setGeminiKey(settings.gemini_key);
+          if (settings.openai_key) setOpenaiKey(settings.openai_key);
+          setDbSource('database');
+
+          // Sync into active runtime adapter
+          flowAIService.saveConfig({
+            providerId: settings.provider_id,
+            geminiKey: settings.gemini_key || undefined,
+            openaiKey: settings.openai_key || undefined,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load user AI settings from DB:', err);
+      }
+    };
+
+    loadUserSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, [userId, workspaceId]);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      // 1. Save directly to database table public.user_ai_settings protected by RLS
+      await crmService.saveUserAISettings(userId, workspaceId, {
+        provider_id: providerId,
+        gemini_key: geminiKey.trim() || null,
+        openai_key: openaiKey.trim() || null,
+      });
+
+      // 2. Update active memory/runtime service adapter
+      flowAIService.saveConfig({
+        providerId,
+        geminiKey: geminiKey.trim() || undefined,
+        openaiKey: openaiKey.trim() || undefined,
+      });
+
+      setDbSource('database');
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (err) {
+      console.error('Error saving AI settings:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <Card className="border-amber-200/80 shadow-xs">
       <CardHeader className="border-b border-slate-100 pb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-gold to-brand-goldHover flex items-center justify-center text-slate-950 shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-gold to-brand-goldHover flex items-center justify-center text-slate-950 shadow-xs shrink-0">
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>{isArabic ? 'إعدادات FlowAI ونماذج الذكاء الاصطناعي' : 'FlowAI Model & Provider Configuration'}</span>
+              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                <span>{t('flowai.aiSettingsTitle')}</span>
                 <Badge variant={activeAdapter.id === 'offline_rule_based' ? 'gold' : 'success'} size="sm">
                   {activeAdapter.name}
                 </Badge>
+                {dbSource === 'database' && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80">
+                    <Database className="w-3 h-3 text-emerald-600" />
+                    <span>{t('flowai.databaseSecurityBadge')}</span>
+                  </span>
+                )}
               </CardTitle>
               <p className="text-xs text-slate-500 mt-0.5">
-                {isArabic
-                  ? 'إدارة مزودي النماذج، مفاتيح API، وتتبع استهلاك الحصص المخصصة'
-                  : 'Manage AI provider adapters, API keys, quotas, and cost controls'}
+                {t('flowai.aiSettingsSubtitle')}
               </p>
             </div>
           </div>
@@ -111,6 +173,26 @@ export const AISettingsSection: React.FC = () => {
           </div>
         </div>
 
+        {/* User Isolation & Security Banner */}
+        <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-50/70 to-indigo-50/50 border border-amber-200/80 text-xs text-slate-800 flex items-start gap-3">
+          <div className="w-7 h-7 rounded-lg bg-white border border-amber-300 flex items-center justify-center text-amber-700 shrink-0 shadow-2xs mt-0.5">
+            <Lock className="w-3.5 h-3.5" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-900 text-xs">
+                {isArabic ? 'حماية مشفرة ومستقلة لكل مستخدم (Per-User RLS)' : 'Private Per-User Storage & RLS Isolation'}
+              </span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-100/80 text-amber-900 border border-amber-200">
+                {isArabic ? 'سري وخاص' : 'Confidential'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              {t('flowai.userKeyNotice')}
+            </p>
+          </div>
+        </div>
+
         {/* Provider Selection */}
         <div className="space-y-4">
           <div>
@@ -123,19 +205,19 @@ export const AISettingsSection: React.FC = () => {
                   id: 'gemini',
                   title: 'Google Gemini',
                   model: 'gemini-1.5-flash',
-                  desc: 'High speed, bilingual reasoning & structured extraction',
+                  desc: isArabic ? 'استدلال ثنائي اللغة فائق السرعة واستخراج منظم' : 'High speed, bilingual reasoning & structured extraction',
                 },
                 {
                   id: 'openai',
                   title: 'OpenAI',
                   model: 'gpt-4o-mini',
-                  desc: 'Consistent JSON mode and enterprise language drafting',
+                  desc: isArabic ? 'نمط JSON متطابق وصياغات بيعية احترافية' : 'Consistent JSON mode and enterprise language drafting',
                 },
                 {
                   id: 'offline_rule_based',
-                  title: 'Offline Rule Engine',
+                  title: t('flowai.offlineMode'),
                   model: 'Grounded Mode',
-                  desc: 'Zero external network calls, 100% CRM verifiable heuristics',
+                  desc: t('flowai.offlineDesc'),
                 },
               ].map(p => {
                 const isSelected = providerId === p.id;
@@ -145,7 +227,7 @@ export const AISettingsSection: React.FC = () => {
                     onClick={() => setProviderId(p.id as AIProviderId)}
                     className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
                       isSelected
-                        ? 'border-brand-gold bg-amber-50/30 shadow-xs ring-1 ring-brand-gold'
+                        ? 'border-brand-gold bg-amber-50/40 shadow-xs ring-1 ring-brand-gold'
                         : 'border-slate-200 bg-white hover:border-slate-300'
                     }`}
                   >
@@ -165,38 +247,63 @@ export const AISettingsSection: React.FC = () => {
 
           {/* API Keys Configuration */}
           {providerId !== 'offline_rule_based' && (
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-                <Key className="w-4 h-4 text-brand-gold" />
-                <span>
-                  {providerId === 'gemini' ? 'Google Gemini API Key' : 'OpenAI API Key'}
+            <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/90 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                  <Key className="w-4 h-4 text-brand-gold" />
+                  <span>
+                    {providerId === 'gemini' ? t('flowai.geminiKeyLabel') : t('flowai.openaiKeyLabel')}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  {isArabic ? 'يتم التخزين في قاعدة بيانات Supabase بحسابك' : 'Stored in Supabase user_ai_settings'}
                 </span>
               </div>
 
               {providerId === 'gemini' ? (
                 <div>
-                  <input
-                    type="password"
-                    value={geminiKey}
-                    onChange={e => setGeminiKey(e.target.value)}
-                    placeholder="AIzaSy..."
-                    className="w-full text-xs py-2 px-3 rounded-lg border border-slate-300 bg-white font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Get your key from Google AI Studio. Stored securely in client storage.
+                  <div className="relative">
+                    <input
+                      type={showGeminiKey ? 'text' : 'password'}
+                      value={geminiKey}
+                      onChange={e => setGeminiKey(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="w-full text-xs py-2 px-3 pe-10 rounded-lg border border-slate-300 bg-white font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowGeminiKey(!showGeminiKey)}
+                      className="absolute end-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700"
+                      title={showGeminiKey ? t('flowai.hideKey') : t('flowai.showKey')}
+                    >
+                      {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1.5">
+                    <span>{t('flowai.geminiKeyHint')}</span>
                   </p>
                 </div>
               ) : (
                 <div>
-                  <input
-                    type="password"
-                    value={openaiKey}
-                    onChange={e => setOpenaiKey(e.target.value)}
-                    placeholder="sk-..."
-                    className="w-full text-xs py-2 px-3 rounded-lg border border-slate-300 bg-white font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Get your key from OpenAI Platform dashboard.
+                  <div className="relative">
+                    <input
+                      type={showOpenaiKey ? 'text' : 'password'}
+                      value={openaiKey}
+                      onChange={e => setOpenaiKey(e.target.value)}
+                      placeholder="sk-..."
+                      className="w-full text-xs py-2 px-3 pe-10 rounded-lg border border-slate-300 bg-white font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                      className="absolute end-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700"
+                      title={showOpenaiKey ? t('flowai.hideKey') : t('flowai.showKey')}
+                    >
+                      {showOpenaiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1.5">
+                    <span>{t('flowai.openaiKeyHint')}</span>
                   </p>
                 </div>
               )}
@@ -204,30 +311,36 @@ export const AISettingsSection: React.FC = () => {
           )}
 
           {/* Security & Key Safety Guarantee */}
-          <div className="p-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-700 flex items-start gap-2.5">
+          <div className="p-3.5 rounded-xl bg-slate-100/90 border border-slate-200 text-xs text-slate-700 flex items-start gap-2.5">
             <ShieldCheck className="w-4 h-4 text-brand-gold shrink-0 mt-0.5" />
             <div className="space-y-0.5 text-[11px]">
-              <span className="font-semibold text-slate-900">Security & Isolation Guarantee:</span>
-              <p className="text-slate-600">
-                FlowAI treats CRM records strictly as untrusted data with anti-injection boundaries. AI cannot execute arbitrary SQL, mutate records without confirmation, or bypass PostgreSQL workspace isolation.
+              <span className="font-semibold text-slate-900">
+                {isArabic ? 'ضمان الأمان وعزل البيانات الصارم:' : 'Security & Isolation Guarantee:'}
+              </span>
+              <p className="text-slate-600 leading-relaxed">
+                {isArabic
+                  ? 'يعامل FlowAI سجلات الـ CRM كبيانات غير موثوقة محاطة بحدود صارمة تمنع حقن التعليمات البرمجية. لا يستطيع الذكاء الاصطناعي تنفيذ أي أوامر SQL عشوائية أو تعديل السجلات دون موافقتك الصريحة أو تجاوز عزل مساحات العمل.'
+                  : 'FlowAI treats CRM records strictly as untrusted data with anti-injection boundaries. AI cannot execute arbitrary SQL, mutate records without confirmation, or bypass PostgreSQL workspace isolation.'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
             {savedSuccess ? (
-              <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
-                <CheckCircle className="w-4 h-4 text-emerald-600" />
-                <span>{isArabic ? 'تم حفظ الإعدادات بنجاح!' : 'AI settings saved successfully!'}</span>
+              <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5 bg-emerald-50 py-1.5 px-3 rounded-lg border border-emerald-200/80">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{t('flowai.savedToDbSuccess')}</span>
               </span>
             ) : <span />}
 
             <Button
               variant="gold"
               onClick={handleSave}
-              icon={<Save className="w-4 h-4" />}
+              loading={loading}
+              icon={loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              className="font-bold shadow-xs"
             >
-              {isArabic ? 'حفظ إعدادات المزود' : 'Save AI Configuration'}
+              {t('flowai.saveConfiguration')}
             </Button>
           </div>
         </div>

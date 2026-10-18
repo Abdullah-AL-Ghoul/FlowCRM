@@ -52,6 +52,17 @@ export interface StageSummary {
   totalValue: number;
 }
 
+export interface UserAISettings {
+  id?: string;
+  user_id: string;
+  workspace_id?: string | null;
+  provider_id: 'gemini' | 'openai' | 'offline_rule_based';
+  gemini_key?: string | null;
+  openai_key?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export type {
   WorkspaceRole,
   ContactStatus,
@@ -60,3 +71,4 @@ export type {
   TaskStatus,
   ActivityType
 };
+
