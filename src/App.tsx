@@ -1,9 +1,12 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CRMProvider } from './context/CRMContext';
 import { I18nProvider } from './i18n/I18nContext';
 import { AppLayout } from './components/layout/AppLayout';
+
+// Public Landing Page
+import { LandingPage } from './features/landing/LandingPage';
 
 // Auth Pages
 import { SignInPage } from './features/auth/SignInPage';
@@ -26,19 +29,28 @@ const FullPageSpinner = () => (
   </div>
 );
 
-// Protected Route Guard
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+// Root Route Guard: Renders high-converting LandingPage at '/' for unauthenticated visitors,
+// or wraps authenticated users inside CRMProvider + AppLayout.
+const RootRoute: React.FC = () => {
   const { session, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return <FullPageSpinner />;
   }
 
   if (!session) {
+    if (location.pathname === '/' || location.pathname === '') {
+      return <LandingPage />;
+    }
     return <Navigate to="/signin" replace />;
   }
 
-  return <CRMProvider>{children}</CRMProvider>;
+  return (
+    <CRMProvider>
+      <AppLayout />
+    </CRMProvider>
+  );
 };
 
 // Public Route Guard (Redirects to dashboard if already authenticated)
@@ -62,6 +74,9 @@ export const App: React.FC = () => {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
+            {/* Public Landing & Marketing Page */}
+            <Route path="/landing" element={<LandingPage />} />
+
             {/* Public Auth Routes */}
             <Route
               path="/signin"
@@ -88,15 +103,8 @@ export const App: React.FC = () => {
               }
             />
 
-            {/* Protected CRM Application Routes */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <AppLayout />
-                </ProtectedRoute>
-              }
-            >
+            {/* Root & CRM Application Routes */}
+            <Route path="/" element={<RootRoute />}>
               <Route index element={<DashboardPage />} />
               <Route path="contacts" element={<ContactsPage />} />
               <Route path="deals" element={<DealsKanbanPage />} />

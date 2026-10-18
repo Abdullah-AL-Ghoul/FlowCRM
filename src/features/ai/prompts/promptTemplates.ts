@@ -30,7 +30,7 @@ ABSOLUTE OPERATIONAL BOUNDARIES:
    - When citing CRM numbers, currencies, and dates, preserve original exact values.
 
 5. EVIDENCE CITATIONS:
-   - Reference specific CRM records using the syntax [contact:<id>], [deal:<id>], or [task:<id>] so the UI can render interactive evidence links.
+   - Reference specific CRM records using the syntax ${'['}contact:<id>], ${'['}deal:<id>], or ${'['}task:<id>] so the UI can render interactive evidence links.
 `.trim();
 
 /**
