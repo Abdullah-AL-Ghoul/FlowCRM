@@ -1,26 +1,48 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CRMProvider } from './context/CRMContext';
 import { I18nProvider } from './i18n/I18nContext';
 import { AppLayout } from './components/layout/AppLayout';
 
-// Public Landing Page
-import { LandingPage } from './features/landing/LandingPage';
+// Public Landing Page (Lazy-loaded)
+const LandingPage = lazy(() =>
+  import('./features/landing/LandingPage').then(m => ({ default: m.LandingPage }))
+);
 
-// Auth Pages
-import { SignInPage } from './features/auth/SignInPage';
-import { SignUpPage } from './features/auth/SignUpPage';
-import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
+// Auth Pages (Lazy-loaded)
+const SignInPage = lazy(() =>
+  import('./features/auth/SignInPage').then(m => ({ default: m.SignInPage }))
+);
+const SignUpPage = lazy(() =>
+  import('./features/auth/SignUpPage').then(m => ({ default: m.SignUpPage }))
+);
+const ResetPasswordPage = lazy(() =>
+  import('./features/auth/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage }))
+);
 
-// CRM Pages
-import { DashboardPage } from './features/dashboard/DashboardPage';
-import { ContactsPage } from './features/contacts/ContactsPage';
-import { DealsKanbanPage } from './features/deals/DealsKanbanPage';
-import { TasksPage } from './features/tasks/TasksPage';
-import { ActivitiesPage } from './features/activities/ActivitiesPage';
-import { ReportsPage } from './features/reports/ReportsPage';
-import { SettingsPage } from './features/settings/SettingsPage';
+// CRM Pages (Lazy-loaded)
+const DashboardPage = lazy(() =>
+  import('./features/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage }))
+);
+const ContactsPage = lazy(() =>
+  import('./features/contacts/ContactsPage').then(m => ({ default: m.ContactsPage }))
+);
+const DealsKanbanPage = lazy(() =>
+  import('./features/deals/DealsKanbanPage').then(m => ({ default: m.DealsKanbanPage }))
+);
+const TasksPage = lazy(() =>
+  import('./features/tasks/TasksPage').then(m => ({ default: m.TasksPage }))
+);
+const ActivitiesPage = lazy(() =>
+  import('./features/activities/ActivitiesPage').then(m => ({ default: m.ActivitiesPage }))
+);
+const ReportsPage = lazy(() =>
+  import('./features/reports/ReportsPage').then(m => ({ default: m.ReportsPage }))
+);
+const SettingsPage = lazy(() =>
+  import('./features/settings/SettingsPage').then(m => ({ default: m.SettingsPage }))
+);
 
 // Loading screen
 const FullPageSpinner = () => (
@@ -73,50 +95,52 @@ export const App: React.FC = () => {
     <I18nProvider>
       <AuthProvider>
         <BrowserRouter>
-          <Routes>
-            {/* Public Landing & Marketing Page */}
-            <Route path="/landing" element={<LandingPage />} />
+          <Suspense fallback={<FullPageSpinner />}>
+            <Routes>
+              {/* Public Landing & Marketing Page */}
+              <Route path="/landing" element={<LandingPage />} />
 
-            {/* Public Auth Routes */}
-            <Route
-              path="/signin"
-              element={
-                <PublicRoute>
-                  <SignInPage />
-                </PublicRoute>
-              }
-            />
-            <Route
-              path="/signup"
-              element={
-                <PublicRoute>
-                  <SignUpPage />
-                </PublicRoute>
-              }
-            />
-            <Route
-              path="/reset-password"
-              element={
-                <PublicRoute>
-                  <ResetPasswordPage />
-                </PublicRoute>
-              }
-            />
+              {/* Public Auth Routes */}
+              <Route
+                path="/signin"
+                element={
+                  <PublicRoute>
+                    <SignInPage />
+                  </PublicRoute>
+                }
+              />
+              <Route
+                path="/signup"
+                element={
+                  <PublicRoute>
+                    <SignUpPage />
+                  </PublicRoute>
+                }
+              />
+              <Route
+                path="/reset-password"
+                element={
+                  <PublicRoute>
+                    <ResetPasswordPage />
+                  </PublicRoute>
+                }
+              />
 
-            {/* Root & CRM Application Routes */}
-            <Route path="/" element={<RootRoute />}>
-              <Route index element={<DashboardPage />} />
-              <Route path="contacts" element={<ContactsPage />} />
-              <Route path="deals" element={<DealsKanbanPage />} />
-              <Route path="tasks" element={<TasksPage />} />
-              <Route path="activities" element={<ActivitiesPage />} />
-              <Route path="reports" element={<ReportsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-            </Route>
+              {/* Root & CRM Application Routes */}
+              <Route path="/" element={<RootRoute />}>
+                <Route index element={<DashboardPage />} />
+                <Route path="contacts" element={<ContactsPage />} />
+                <Route path="deals" element={<DealsKanbanPage />} />
+                <Route path="tasks" element={<TasksPage />} />
+                <Route path="activities" element={<ActivitiesPage />} />
+                <Route path="reports" element={<ReportsPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+              </Route>
 
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              {/* Fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </AuthProvider>
     </I18nProvider>

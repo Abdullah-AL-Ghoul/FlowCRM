@@ -91,20 +91,22 @@ class AuthService {
       // If Supabase returned an active session (email confirmation disabled or auto-confirmed)
       if (data.session) {
         const slug = workspaceName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.floor(Math.random() * 1000);
-        const { data: wsData, error: wsError } = await (supabase
+        // Id is generated in the browser: the creator is not yet a workspace
+        // member, so INSERT ... RETURNING with `.select()` fails RLS (42501).
+        const workspaceId = crypto.randomUUID();
+        const { error: wsError } = await (supabase
           .from('workspaces') as any)
           .insert({
+            id: workspaceId,
             name: workspaceName,
             slug,
-          })
-          .select()
-          .single();
+          });
 
-        if (!wsError && wsData) {
+        if (!wsError) {
           await (supabase
             .from('workspace_members') as any)
             .insert({
-              workspace_id: wsData.id,
+              workspace_id: workspaceId,
               user_id: data.user.id,
               role: 'owner',
             });
@@ -206,29 +208,36 @@ class AuthService {
     // If user has no workspace yet (e.g. first login after email confirmation)
     if (!memberData) {
       const wsName = resolvedProfile.full_name ? `${resolvedProfile.full_name}'s Workspace` : 'My Sales Workspace';
-      const slug = 'ws-' + userId.slice(0, 8) + '-' + Math.floor(Math.random() * 1000);
+      const workspaceId = crypto.randomUUID();
+      const slug = 'ws-' + userId.slice(0, 8) + '-' + workspaceId.slice(0, 8);
 
-      const { data: newWs, error: wsError } = await (supabase
+      const { error: wsError } = await (supabase
         .from('workspaces') as any)
         .insert({
+          id: workspaceId,
           name: wsName,
           slug,
-        })
-        .select()
-        .single();
+        });
 
-      if (!wsError && newWs) {
+      if (!wsError) {
         await (supabase
           .from('workspace_members') as any)
           .insert({
-            workspace_id: newWs.id,
+            workspace_id: workspaceId,
             user_id: userId,
             role: 'owner',
           });
 
+        const newWs = {
+          id: workspaceId,
+          name: wsName,
+          slug,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
         memberData = {
           id: `member-${userId}`,
-          workspace_id: newWs.id,
+          workspace_id: workspaceId,
           user_id: userId,
           role: 'owner',
           created_at: new Date().toISOString(),

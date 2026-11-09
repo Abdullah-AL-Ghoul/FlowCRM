@@ -22,12 +22,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let isMounted = true;
-    authService.getInitialSession().then(initSession => {
-      if (isMounted) {
-        setSession(initSession);
-        setLoading(false);
-      }
-    });
+    authService
+      .getInitialSession()
+      .then(initSession => {
+        if (isMounted) {
+          setSession(initSession);
+          setLoading(false);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to get initial auth session', err);
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
 
     return () => {
       isMounted = false;

@@ -5,7 +5,7 @@
 
 BEGIN;
 
-SELECT plan(16);
+SELECT plan(23);
 
 -- 1. Verify all 7 core tables exist
 SELECT has_table('public', 'profiles', 'Table profiles exists');
@@ -15,6 +15,13 @@ SELECT has_table('public', 'contacts', 'Table contacts exists');
 SELECT has_table('public', 'deals', 'Table deals exists');
 SELECT has_table('public', 'tasks', 'Table tasks exists');
 SELECT has_table('public', 'activities', 'Table activities exists');
+
+-- 1b. FlowAI gateway security objects
+SELECT has_table('public', 'flowai_usage', 'Table flowai_usage exists');
+SELECT hasnt_table('public', 'user_ai_settings', 'Plaintext-key table user_ai_settings is dropped');
+SELECT has_function('public', 'consume_flowai_quota', ARRAY['uuid', 'integer', 'integer'], 'consume_flowai_quota exists');
+SELECT has_function('public', 'record_flowai_usage', ARRAY['uuid', 'integer'], 'record_flowai_usage exists');
+SELECT has_function('public', 'get_flowai_usage', ARRAY['uuid', 'integer', 'integer'], 'get_flowai_usage exists');
 
 -- 2. Verify RLS is enabled on all tables
 SELECT row_level_security_active('public.profiles', 'RLS is active on profiles');

@@ -17,6 +17,7 @@ import {
   Building,
   Briefcase,
   Trash2,
+  Edit2,
   CheckCircle2,
   Circle,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ export const TasksPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'all' | 'today' | 'overdue' | 'upcoming' | 'completed'>('all');
   const [formModalOpen, setFormModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -127,7 +129,10 @@ export const TasksPage: React.FC = () => {
         <Button
           variant="gold"
           size="sm"
-          onClick={() => setFormModalOpen(true)}
+          onClick={() => {
+            setSelectedTask(null);
+            setFormModalOpen(true);
+          }}
           icon={<Plus className="w-4 h-4" />}
         >
           {t('tasks.newTask')}
@@ -262,7 +267,17 @@ export const TasksPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setFormModalOpen(true);
+                      }}
+                      className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                      title={t('common.edit')}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => handleDeletePrompt(task)}
                       className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50"
@@ -281,7 +296,11 @@ export const TasksPage: React.FC = () => {
       {/* Form Modal */}
       <TaskFormModal
         isOpen={formModalOpen}
-        onClose={() => setFormModalOpen(false)}
+        onClose={() => {
+          setFormModalOpen(false);
+          setSelectedTask(null);
+        }}
+        task={selectedTask}
       />
 
       {/* Delete Confirm */}

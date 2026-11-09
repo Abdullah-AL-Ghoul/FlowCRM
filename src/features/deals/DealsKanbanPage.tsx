@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useCRM } from '../../context/CRMContext';
+import { useAuth } from '../../context/AuthContext';
 import { useI18n } from '../../i18n/I18nContext';
 import { Deal, DealStage } from '../../types/crm.types';
 import { KanbanColumn } from './KanbanColumn';
 import { DealFormModal } from './DealFormModal';
 import { DealDetailModal } from './DealDetailModal';
+import { LossReasonModal } from './LossReasonModal';
 import { AISalesWriterModal } from '../ai/components/AISalesWriterModal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { Button } from '../../components/common/Button';
@@ -14,7 +16,8 @@ import { formatCurrency } from '../../lib/utils';
 import { Plus, Search, Kanban as KanbanIcon, Sparkles } from 'lucide-react';
 
 export const DealsKanbanPage: React.FC = () => {
-  const { deals, updateDealStage, deleteDeal, metrics } = useCRM();
+  const { deals, updateDealStage, deleteDeal, createActivity, metrics } = useCRM();
+  const { session } = useAuth();
   const { t, locale } = useI18n();
 
   const [search, setSearch] = useState('');
@@ -27,6 +30,8 @@ export const DealsKanbanPage: React.FC = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [dealToDelete, setDealToDelete] = useState<Deal | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [lossModalOpen, setLossModalOpen] = useState(false);
+  const [pendingLostDealId, setPendingLostDealId] = useState<string | null>(null);
 
   const stages: DealStage[] = ['new', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
 
@@ -78,11 +83,38 @@ export const DealsKanbanPage: React.FC = () => {
   };
 
   const handleStageChange = async (dealId: string, newStage: DealStage) => {
+    if (newStage === 'lost') {
+      setPendingLostDealId(dealId);
+      setLossModalOpen(true);
+      return;
+    }
     await updateDealStage(dealId, newStage);
   };
 
   const handleDropDeal = async (dealId: string, newStage: DealStage) => {
+    if (newStage === 'lost') {
+      setPendingLostDealId(dealId);
+      setLossModalOpen(true);
+      return;
+    }
     await updateDealStage(dealId, newStage);
+  };
+
+  const handleConfirmLoss = async (reason: string, notes: string) => {
+    if (!pendingLostDealId) return;
+    const targetDeal = deals.find(d => d.id === pendingLostDealId);
+    await updateDealStage(pendingLostDealId, 'lost');
+    if (createActivity && targetDeal) {
+      await createActivity({
+        type: 'stage_change',
+        description: `Deal marked Closed Lost. Reason: ${reason}${notes ? ` (${notes})` : ''}`,
+        contact_id: targetDeal.contact_id,
+        deal_id: targetDeal.id,
+        user_id: session?.profile?.id || null,
+        occurred_at: new Date().toISOString(),
+      });
+    }
+    setPendingLostDealId(null);
   };
 
   return (
@@ -220,6 +252,19 @@ export const DealsKanbanPage: React.FC = () => {
         onConfirm={confirmDelete}
         loading={isDeleting}
       />
+
+      {/* Closed Lost Reason Modal */}
+      {lossModalOpen && (
+        <LossReasonModal
+          isOpen={lossModalOpen}
+          onClose={() => {
+            setLossModalOpen(false);
+            setPendingLostDealId(null);
+          }}
+          onConfirm={handleConfirmLoss}
+          dealTitle={deals.find(d => d.id === pendingLostDealId)?.title || 'Deal'}
+        />
+      )}
     </div>
   );
 };

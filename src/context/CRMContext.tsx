@@ -31,6 +31,7 @@ interface CRMContextType {
   updateDeal: (id: string, updates: Partial<Deal>) => Promise<Deal>;
   deleteDeal: (id: string) => Promise<void>;
   createTask: (data: Omit<Task, 'id' | 'workspace_id' | 'created_at' | 'updated_at' | 'contact' | 'deal' | 'assignee'>) => Promise<Task>;
+  updateTask: (id: string, updates: Partial<Task>) => Promise<Task>;
   toggleTaskStatus: (id: string, currentStatus: string) => Promise<Task>;
   deleteTask: (id: string) => Promise<void>;
   createActivity: (data: Omit<Activity, 'id' | 'workspace_id' | 'created_at' | 'contact' | 'deal' | 'user'>) => Promise<Activity>;
@@ -95,7 +96,9 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [workspaceId]);
 
   useEffect(() => {
-    refreshData();
+    refreshData().catch(err => {
+      console.error('Initial CRM data fetch failed:', err);
+    });
   }, [refreshData]);
 
   // Contacts
@@ -150,10 +153,25 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newTask;
   };
 
-  const toggleTaskStatus = async (id: string, currentStatus: string) => {
-    const updated = await crmService.toggleTaskStatus(id, currentStatus);
+  const updateTask = async (id: string, updates: Partial<Task>) => {
+    const updated = await crmService.updateTask(id, updates);
     await refreshData();
     return updated;
+  };
+
+  const toggleTaskStatus = async (id: string, currentStatus: string) => {
+    // Optimistic UI update for immediate tactile feedback
+    const nextStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+    setTasks(prev => prev.map(t => (t.id === id ? { ...t, status: nextStatus } : t)));
+    try {
+      const updated = await crmService.toggleTaskStatus(id, currentStatus);
+      await refreshData();
+      return updated;
+    } catch (err) {
+      // Revert state if remote mutation fails
+      setTasks(prev => prev.map(t => (t.id === id ? { ...t, status: currentStatus as any } : t)));
+      throw err;
+    }
   };
 
   const deleteTask = async (id: string) => {
@@ -195,6 +213,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateDeal,
         deleteDeal,
         createTask,
+        updateTask,
         toggleTaskStatus,
         deleteTask,
         createActivity,

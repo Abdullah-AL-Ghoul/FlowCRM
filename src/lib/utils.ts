@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { isTaskOverdueShared, isTaskDueTodayShared } from '../../supabase/functions/_shared/metrics';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -49,22 +50,16 @@ export function formatDateTime(dateString: string | null | undefined, locale: st
   }
 }
 
+// Single source of truth: the shared cross-runtime metrics module (also used
+// by the FlowAI edge function), evaluated in the browser's own timezone.
 export function isTaskOverdue(dueDateString: string, status: string): boolean {
-  if (status === 'completed' || status === 'cancelled') return false;
-  const dueDate = new Date(dueDateString);
   const now = new Date();
-  return dueDate < now;
+  return isTaskOverdueShared(dueDateString, status, now, now.getTimezoneOffset());
 }
 
 export function isTaskDueToday(dueDateString: string, status: string): boolean {
-  if (status === 'completed' || status === 'cancelled') return false;
-  const dueDate = new Date(dueDateString);
   const now = new Date();
-  return (
-    dueDate.getFullYear() === now.getFullYear() &&
-    dueDate.getMonth() === now.getMonth() &&
-    dueDate.getDate() === now.getDate()
-  );
+  return isTaskDueTodayShared(dueDateString, status, now, now.getTimezoneOffset());
 }
 
 export function getInitials(name: string): string {

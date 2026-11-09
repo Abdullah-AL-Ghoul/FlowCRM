@@ -1,50 +1,95 @@
+// ==============================================================================
+// FlowAI client-facing types.
+// Domain result shapes are re-exported from the shared cross-runtime module
+// (supabase/functions/_shared/types.ts) so the client and the edge function
+// can never drift apart. Client-only UI types live at the bottom.
+// ==============================================================================
+
 import { z } from 'zod';
-import { Contact, Deal } from '../../../types/crm.types';
+import {
+  ProposedTaskCore,
+} from '../../../../supabase/functions/_shared/types';
 
-// ==============================================================================
-// 1. AI PROVIDER & CONFIGURATION TYPES
-// ==============================================================================
-export type AIProviderId = 'gemini' | 'openai' | 'offline_rule_based';
+// ---- Shared cross-runtime shapes (authoritative) ----
+export type {
+  AnalyticsPeriod,
+  AnalyticsQueryType,
+  ContactSourcesResult,
+  DealRiskSignal,
+  DealSummaryResult,
+  EvidenceType,
+  FlowAIEngine,
+  FlowAILocale,
+  GroundedEvidence,
+  OverdueByAssigneeResult,
+  PipelineRowResult,
+  RiskLevel,
+  SalesWriterResponseCore,
+  TaskListResult,
+  ToolName,
+  WonDealsPeriodResult,
+  WriterChannel,
+  WriterTone,
+  WriterLength,
+  WriterLanguage,
+} from '../../../../supabase/functions/_shared/types';
 
-export interface AIProviderConfig {
-  providerId: AIProviderId;
-  model: string;
-  apiKey?: string;
-  endpoint?: string;
-  temperature?: number;
-  maxTokens?: number;
-  isAvailable: boolean;
-  statusMessage?: string;
+export { ANALYTICS_PERIODS } from '../../../../supabase/functions/_shared/types';
+
+import type {
+  ContactIntelligenceResultCore,
+  DealIntelligenceResultCore,
+  MeetingIntelligenceResultCore,
+  NLAnalyticsResultCore,
+  SalesWriterResponseCore,
+  WriterChannel,
+  WriterTone,
+  WriterLength,
+  WriterLanguage,
+  GroundedEvidence,
+  ContractAnalysisResult,
+  ContractRiskClause,
+} from '../../../../supabase/functions/_shared/types';
+
+export type { ContractAnalysisResult, ContractRiskClause };
+
+// ---- Compatibility aliases (component-facing names) ----
+export type ContactIntelligenceResult = ContactIntelligenceResultCore;
+export type DealIntelligenceResult = DealIntelligenceResultCore;
+export type MeetingIntelligenceResult = MeetingIntelligenceResultCore;
+export type NLAnalyticsResult = NLAnalyticsResultCore;
+
+export interface SalesWriterRequest {
+  channel: WriterChannel;
+  goal: string;
+  tone: WriterTone;
+  length: WriterLength;
+  language: WriterLanguage;
+  contact?: import('../../../types/crm.types').Contact | null;
+  deal?: import('../../../types/crm.types').Deal | null;
+  userContext?: string;
 }
 
-export interface AIWorkspaceUsage {
-  workspaceId: string;
-  tokensUsedThisMonth: number;
-  maxMonthlyTokens: number;
-  requestsThisHour: number;
-  maxHourlyRequests: number;
-  lastRequestTimestamp: number;
-  estimatedCostUsd: number;
-}
+export type SalesWriterResponse = SalesWriterResponseCore;
 
-// ==============================================================================
-// 2. EVIDENCE & CITATIONS
-// ==============================================================================
-export type EvidenceType = 'contact' | 'deal' | 'task' | 'activity' | 'metric';
-
-export interface GroundedEvidence {
+// Client UI task proposal includes selection state + stable id.
+export interface ProposedTask extends ProposedTaskCore {
   id: string;
-  type: EvidenceType;
-  title: string;
-  subtitle?: string;
-  route: string;
-  snippet?: string;
+  selected: boolean;
 }
 
-// ==============================================================================
-// 3. FLOWAI COPILOT CHAT TYPES
-// ==============================================================================
+// ------------------------------------------------------------------------------
+// CLIENT-ONLY: copilot chat types
+// ------------------------------------------------------------------------------
 export type ChatRole = 'user' | 'assistant' | 'system' | 'tool';
+
+export interface ToolCall {
+  id: string;
+  toolName: string;
+  arguments: Record<string, any>;
+  result?: any;
+  error?: string;
+}
 
 export interface ChatMessage {
   id: string;
@@ -55,47 +100,25 @@ export interface ChatMessage {
   evidence?: GroundedEvidence[];
   isAiGenerated?: boolean;
   isStreaming?: boolean;
+  engine?: 'gemini' | 'openai' | 'anthropic' | 'rules';
 }
 
-export interface ToolCall {
-  id: string;
-  toolName: string;
-  arguments: Record<string, any>;
-  result?: any;
-  error?: string;
-}
-
-// ==============================================================================
-// 4. AUTHENTICATED READ-ONLY CRM TOOLS DEFINITION
-// ==============================================================================
-export type ToolName =
-  | 'search_contacts'
-  | 'get_contact_summary'
-  | 'get_deal_summary'
-  | 'get_open_tasks'
-  | 'get_overdue_tasks'
-  | 'get_sales_metrics'
-  | 'get_pipeline_breakdown'
-  | 'get_activity_timeline';
-
-export interface ToolDefinition {
-  name: ToolName;
-  description: string;
-  parameters: z.ZodObject<any>;
-}
-
-// Zod Schemas for Tool Arguments
+// ------------------------------------------------------------------------------
+// CLIENT-ONLY: tool argument schemas (mirror the shared registry; zod lives on
+// the client for local demo validation; the edge function uses dependency-free
+// validators internally).
+// ------------------------------------------------------------------------------
 export const SearchContactsSchema = z.object({
   query: z.string().describe('Search term for contact name, email, or company'),
   limit: z.number().optional().default(5),
 });
 
 export const GetContactSummarySchema = z.object({
-  contactId: z.string().describe('UUID or ID of the contact to summarize'),
+  contactId: z.string().describe('UUID of the contact to summarize'),
 });
 
 export const GetDealSummarySchema = z.object({
-  dealId: z.string().describe('UUID or ID of the deal to inspect'),
+  dealId: z.string().describe('UUID of the deal to inspect'),
 });
 
 export const GetTasksSchema = z.object({
@@ -114,121 +137,29 @@ export const GetActivityTimelineSchema = z.object({
   dealId: z.string().optional(),
 });
 
-// ==============================================================================
-// 5. SALES WRITER TYPES
-// ==============================================================================
-export type WriterChannel = 'email' | 'whatsapp' | 'meeting_followup' | 'intro' | 'proposal_cover' | 'renewal';
-export type WriterTone = 'professional' | 'consultative' | 'urgent' | 'friendly' | 'executive';
-export type WriterLength = 'concise' | 'balanced' | 'detailed';
-export type WriterLanguage = 'en' | 'ar';
-
-export interface SalesWriterRequest {
-  channel: WriterChannel;
-  goal: string;
-  tone: WriterTone;
-  length: WriterLength;
-  language: WriterLanguage;
-  contact?: Contact | null;
-  deal?: Deal | null;
-  userContext?: string;
+// ------------------------------------------------------------------------------
+// CLIENT-ONLY: usage + lead scoring + data quality
+// ------------------------------------------------------------------------------
+export interface AIWorkspaceUsage {
+  workspaceId: string;
+  tokensUsedThisMonth: number;
+  maxMonthlyTokens: number;
+  requestsThisHour: number;
+  maxHourlyRequests: number;
+  lastRequestTimestamp: number;
+  estimatedCostUsd: number;
 }
 
-export interface SalesWriterResponse {
-  subject?: string;
-  body: string;
-  detectedMissingFields: string[];
-  suggestedNextStep?: string;
-  evidence: GroundedEvidence[];
+export interface GatewayUsageSnapshot {
+  requestsThisHour: number;
+  tokensThisMonth: number;
+  hourlyRequestLimit: number;
+  monthlyTokenLimit: number;
 }
 
-// ==============================================================================
-// 6. MEETING INTELLIGENCE TYPES
-// ==============================================================================
-export interface ProposedTask {
-  id: string;
-  title: string;
-  description?: string;
-  suggestedDueDate?: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  suggestedAssigneeId?: string;
-  suggestedAssigneeName?: string;
-  selected: boolean;
-}
-
-export interface MeetingIntelligenceResult {
-  executiveSummary: string;
-  keyDiscussionPoints: string[];
-  explicitDecisions: string[];
-  openQuestions: string[];
-  potentialRisks: string[];
-  proposedTasks: ProposedTask[];
-  unsupportedClaims: string[];
-}
-
-// ==============================================================================
-// 7. DEAL & CONTACT INTELLIGENCE TYPES
-// ==============================================================================
-export type RiskLevel = 'low' | 'medium' | 'high';
-
-export interface DealRiskSignal {
-  level: RiskLevel;
-  signal: string;
-  explanation: string;
-  isRuleBased: true;
-}
-
-export interface DealIntelligenceResult {
-  dealSummary: string;
-  riskSignals: DealRiskSignal[];
-  missingInformation: string[];
-  recommendedNextAction: string;
-  coachingQuestions: string[];
-  suggestedDraftPrompt?: string;
-  evidence: GroundedEvidence[];
-}
-
-export interface ContactIntelligenceResult {
-  summary: string;
-  communicationPattern: string;
-  missingInformation: string[];
-  suggestedQuestions: string[];
-  recommendedNextSteps: string[];
-  evidence: GroundedEvidence[];
-}
-
-// ==============================================================================
-// 8. NATURAL-LANGUAGE ANALYTICS TYPES
-// ==============================================================================
-export type AnalyticsQueryType =
-  | 'won_deals_period'
-  | 'pipeline_stage_counts'
-  | 'overdue_tasks_summary'
-  | 'contact_sources'
-  | 'win_rate_summary'
-  | 'general_kpi';
-
-export interface NLAnalyticsResult {
-  query: string;
-  matchedType: AnalyticsQueryType;
-  answerExplanation: string;
-  kpiHighlight?: {
-    label: string;
-    value: string | number;
-    subtext?: string;
-  };
-  chartData?: Array<{ name: string; value: number; [key: string]: any }>;
-  chartType?: 'bar' | 'pie' | 'metric';
-  periodDescription: string;
-  appliedFilters: string[];
-  recordLinks: GroundedEvidence[];
-}
-
-// ==============================================================================
-// 9. LEAD SCORING & DATA QUALITY TYPES
-// ==============================================================================
 export interface LeadScoreBreakdown {
   contactId: string;
-  totalScore: number; // 0 - 100
+  totalScore: number;
   tier: 'hot' | 'warm' | 'cold';
   factors: Array<{
     factor: string;

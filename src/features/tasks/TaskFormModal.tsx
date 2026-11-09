@@ -17,7 +17,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   onClose,
   task,
 }) => {
-  const { createTask, contacts, deals, members } = useCRM();
+  const { createTask, updateTask, contacts, deals, members } = useCRM();
   const { t } = useI18n();
 
   const [title, setTitle] = useState('');
@@ -67,16 +67,29 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
     setError(null);
 
     try {
-      await createTask({
-        title: title.trim(),
-        description: description.trim() || null,
-        due_date: new Date(dueDate).toISOString(),
-        priority,
-        status,
-        assigned_to: assignedTo || null,
-        contact_id: contactId || null,
-        deal_id: dealId || null,
-      });
+      if (task) {
+        await updateTask(task.id, {
+          title: title.trim(),
+          description: description.trim() || null,
+          due_date: new Date(dueDate).toISOString(),
+          priority,
+          status,
+          assigned_to: assignedTo || null,
+          contact_id: contactId || null,
+          deal_id: dealId || null,
+        });
+      } else {
+        await createTask({
+          title: title.trim(),
+          description: description.trim() || null,
+          due_date: new Date(dueDate).toISOString(),
+          priority,
+          status,
+          assigned_to: assignedTo || null,
+          contact_id: contactId || null,
+          deal_id: dealId || null,
+        });
+      }
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save task');

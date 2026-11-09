@@ -279,6 +279,15 @@ ON public.workspace_members FOR SELECT
 TO authenticated
 USING (public.is_workspace_member(workspace_id, auth.uid()));
 
+-- SECURITY DEFINER helper used by the self-bootstrap policy below.
+-- A policy subquery cannot reliably correlate the NEW row (unqualified
+-- column names inside the subquery would re-bind to the subquery's own
+-- table), so the emptiness check for the target workspace lives here.
+CREATE OR REPLACE FUNCTION public.is_empty_workspace(p_workspace_id UUID)
+RETURNS BOOLEAN AS $$
+    SELECT NOT EXISTS (SELECT 1 FROM public.workspace_members WHERE workspace_id = p_workspace_id);
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
 -- Only owners and admins can add new members
 CREATE POLICY "Admins and owners can add members"
 ON public.workspace_members FOR INSERT
@@ -289,7 +298,7 @@ WITH CHECK (
     OR (
         user_id = auth.uid()
         AND role = 'owner'
-        AND NOT EXISTS (SELECT 1 FROM public.workspace_members WHERE workspace_id = workspace_members.workspace_id)
+        AND public.is_empty_workspace(workspace_id)
     )
 );
 

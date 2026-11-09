@@ -9,7 +9,6 @@ import {
   DashboardMetrics,
   StageSummary,
   DealStage,
-  UserAISettings,
 } from '../types/crm.types';
 import {
   initialDemoWorkspace,
@@ -21,7 +20,10 @@ import {
   initialDemoProfiles,
   DEMO_USER_ID,
 } from './demoData';
-import { isTaskDueToday, isTaskOverdue } from '../lib/utils';
+import {
+  computeDashboardMetrics,
+  computePipelineStageBreakdown,
+} from '../../supabase/functions/_shared/metrics';
 
 // Local storage key for persistent demo mutations (v2 with expanded dataset)
 const DEMO_STORAGE_KEY = 'flowcrm_demo_data_v2';
@@ -183,9 +185,10 @@ class CRMService {
       return updated;
     }
 
+    const { assignee: _assignee, ...cleanUpdates } = updates as Record<string, unknown>;
     const { data, error } = await (supabase
       .from('contacts') as any)
-      .update(updates)
+      .update(cleanUpdates)
       .eq('id', contactId)
       .select('*, assignee:profiles!assigned_to(*)')
       .single();
@@ -348,9 +351,10 @@ class CRMService {
       return updated;
     }
 
+    const { contact: _contact, assignee: _assignee, ...cleanUpdates } = updates as Record<string, unknown>;
     const { data, error } = await (supabase
       .from('deals') as any)
-      .update(updates)
+      .update(cleanUpdates)
       .eq('id', dealId)
       .select('*, contact:contacts(*), assignee:profiles!assigned_to(*)')
       .single();
@@ -455,6 +459,46 @@ class CRMService {
     return data as unknown as Task;
   }
 
+  async updateTask(taskId: string, updates: Partial<Task>): Promise<Task> {
+    if (this.isDemo) {
+      const state = loadDemoState();
+      const idx = state.tasks.findIndex(t => t.id === taskId);
+      if (idx === -1) throw new Error('Task not found in demo');
+      const contact = updates.contact_id !== undefined
+        ? (updates.contact_id ? state.contacts.find(c => c.id === updates.contact_id) || null : null)
+        : state.tasks[idx].contact;
+      const deal = updates.deal_id !== undefined
+        ? (updates.deal_id ? state.deals.find(d => d.id === updates.deal_id) || null : null)
+        : state.tasks[idx].deal;
+      const assignee = updates.assigned_to !== undefined
+        ? (updates.assigned_to ? initialDemoProfiles.find(p => p.id === updates.assigned_to) || null : null)
+        : state.tasks[idx].assignee;
+
+      const updated: Task = {
+        ...state.tasks[idx],
+        ...updates,
+        contact,
+        deal,
+        assignee,
+        updated_at: new Date().toISOString(),
+      };
+      state.tasks[idx] = updated;
+      saveDemoState(state);
+      return updated;
+    }
+
+    const { contact: _contact, deal: _deal, assignee: _assignee, ...cleanUpdates } = updates as Record<string, unknown>;
+    const { data, error } = await (supabase
+      .from('tasks') as any)
+      .update(cleanUpdates)
+      .eq('id', taskId)
+      .select('*, contact:contacts(*), deal:deals(*), assignee:profiles!assigned_to(*)')
+      .single();
+
+    if (error) throw error;
+    return data as unknown as Task;
+  }
+
   async deleteTask(taskId: string): Promise<void> {
     if (this.isDemo) {
       const state = loadDemoState();
@@ -525,6 +569,8 @@ class CRMService {
 
   // ----------------------------------------------------------------------------
   // CALCULATED METRICS & REPORTING
+  // (formulas delegate to the shared cross-runtime engine — the exact same
+  // math the FlowAI edge function and analytics tools use)
   // ----------------------------------------------------------------------------
   async getDashboardMetrics(workspaceId: string): Promise<DashboardMetrics> {
     const [contacts, deals, tasks] = await Promise.all([
@@ -533,133 +579,31 @@ class CRMService {
       this.getTasks(workspaceId),
     ]);
 
-    const activeDeals = deals.filter(d => d.stage !== 'won' && d.stage !== 'lost');
-    const wonDeals = deals.filter(d => d.stage === 'won');
-    const lostDeals = deals.filter(d => d.stage === 'lost');
-
-    const openPipelineValue = activeDeals.reduce((sum, d) => sum + Number(d.value || 0), 0);
-    const wonDealsValue = wonDeals.reduce((sum, d) => sum + Number(d.value || 0), 0);
-
-    const totalClosed = wonDeals.length + lostDeals.length;
-    const winRate = totalClosed > 0 ? Math.round((wonDeals.length / totalClosed) * 100) : 0;
-
-    const tasksDueToday = tasks.filter(t => isTaskDueToday(t.due_date, t.status)).length;
-    const tasksOverdue = tasks.filter(t => isTaskOverdue(t.due_date, t.status)).length;
+    const now = new Date();
+    const metrics = computeDashboardMetrics({
+      contacts,
+      deals,
+      tasks,
+      now,
+      tzOffsetMinutes: now.getTimezoneOffset(),
+      locale: 'en',
+    });
 
     return {
-      totalContacts: contacts.length,
-      activeDealsCount: activeDeals.length,
-      openPipelineValue,
-      wonDealsCount: wonDeals.length,
-      wonDealsValue,
-      winRate,
-      tasksDueToday,
-      tasksOverdue,
+      totalContacts: metrics.totalContacts,
+      activeDealsCount: metrics.activeDealsCount,
+      openPipelineValue: metrics.openPipelineValue,
+      wonDealsCount: metrics.wonDealsCount,
+      wonDealsValue: metrics.wonDealsValue,
+      winRate: metrics.winRate,
+      tasksDueToday: metrics.tasksDueToday,
+      tasksOverdue: metrics.tasksOverdue,
     };
   }
 
   async getPipelineStageBreakdown(workspaceId: string): Promise<StageSummary[]> {
     const deals = await this.getDeals(workspaceId);
-    const stages: DealStage[] = ['new', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
-
-    return stages.map(stage => {
-      const stageDeals = deals.filter(d => d.stage === stage);
-      return {
-        stage,
-        count: stageDeals.length,
-        totalValue: stageDeals.reduce((sum, d) => sum + Number(d.value || 0), 0),
-      };
-    });
-  }
-
-  async getUserAISettings(userId: string, workspaceId?: string | null): Promise<UserAISettings | null> {
-    if (!isSupabaseConfigured || this.isDemo) {
-      try {
-        const raw = localStorage.getItem(`flowcrm_user_ai_settings_${userId}`);
-        if (raw) return JSON.parse(raw);
-      } catch (e) {
-        console.error('Failed to load local AI settings', e);
-      }
-      return null;
-    }
-
-    try {
-      let query = (supabase.from('user_ai_settings' as any) as any)
-        .select('*')
-        .eq('user_id', userId);
-
-      if (workspaceId) {
-        query = query.eq('workspace_id', workspaceId);
-      }
-
-      const { data, error } = await query.maybeSingle();
-      if (error) {
-        console.warn('Could not fetch user AI settings from DB (using local fallback):', error.message);
-        const raw = localStorage.getItem(`flowcrm_user_ai_settings_${userId}`);
-        return raw ? JSON.parse(raw) : null;
-      }
-      return data as UserAISettings | null;
-    } catch (err) {
-      console.error('Error fetching user AI settings:', err);
-      const raw = localStorage.getItem(`flowcrm_user_ai_settings_${userId}`);
-      return raw ? JSON.parse(raw) : null;
-    }
-  }
-
-  async saveUserAISettings(
-    userId: string,
-    workspaceId: string | null | undefined,
-    settings: {
-      provider_id: 'gemini' | 'openai' | 'offline_rule_based';
-      gemini_key?: string | null;
-      openai_key?: string | null;
-    }
-  ): Promise<UserAISettings> {
-    const payload: UserAISettings = {
-      user_id: userId,
-      workspace_id: workspaceId || null,
-      provider_id: settings.provider_id,
-      gemini_key: settings.gemini_key || null,
-      openai_key: settings.openai_key || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    // Cache locally for fast offline/demo access
-    try {
-      localStorage.setItem(`flowcrm_user_ai_settings_${userId}`, JSON.stringify(payload));
-    } catch (e) {
-      console.error('Error caching AI settings locally', e);
-    }
-
-    if (!isSupabaseConfigured || this.isDemo) {
-      return payload;
-    }
-
-    try {
-      const { data, error } = await (supabase.from('user_ai_settings' as any) as any)
-        .upsert(
-          {
-            user_id: userId,
-            workspace_id: workspaceId || null,
-            provider_id: settings.provider_id,
-            gemini_key: settings.gemini_key || null,
-            openai_key: settings.openai_key || null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id,workspace_id' }
-        )
-        .select()
-        .single();
-
-      if (error) {
-        console.warn('Supabase user_ai_settings upsert note (cached locally):', error.message);
-        return payload;
-      }
-      return data as UserAISettings;
-    } catch (err) {
-      console.warn('Error saving user AI settings to Supabase (cached locally):', err);
-      return payload;
-    }
+    return computePipelineStageBreakdown(deals);
   }
 
   resetDemoData(): void {

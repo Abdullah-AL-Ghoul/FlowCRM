@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useI18n } from '../../../i18n/I18nContext';
+import { useAuth } from '../../../context/AuthContext';
 import { flowAIService } from '../services/flowAIService';
-import { NLAnalyticsResult } from '../types/ai.types';
+import { NLAnalyticsResult, AnalyticsPeriod, ANALYTICS_PERIODS } from '../types/ai.types';
 import { EvidenceCitation } from './EvidenceCitation';
 import { Button } from '../../../components/common/Button';
 import { Card } from '../../../components/common/Card';
@@ -9,6 +10,7 @@ import { Badge } from '../../../components/common/Badge';
 import {
   Sparkles,
   Search,
+  CalendarDays,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -24,11 +26,22 @@ import {
 
 export const NLAnalyticsSection: React.FC = () => {
   const { locale } = useI18n();
+  const { session } = useAuth();
   const isArabic = locale === 'ar';
+  const workspaceId = session?.workspace?.id || 'demo-workspace-01';
 
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [explicitPeriod, setExplicitPeriod] = useState<AnalyticsPeriod | ''>('');
   const [result, setResult] = useState<NLAnalyticsResult | null>(null);
+
+  const periodLabels: Record<AnalyticsPeriod | '', string> = {
+    '': isArabic ? 'تلقائي (حسب الاستعلام)' : 'Auto (from query)',
+    this_month: isArabic ? 'هذا الشهر' : 'This Month',
+    last_month: isArabic ? 'الشهر الماضي' : 'Last Month',
+    this_quarter: isArabic ? 'هذا الربع' : 'This Quarter',
+    all_time: isArabic ? 'كل الفترات' : 'All Time',
+  };
 
   const sampleQueries = isArabic
     ? [
@@ -50,8 +63,9 @@ export const NLAnalyticsSection: React.FC = () => {
     try {
       const res = await flowAIService.queryAnalytics(
         q,
-        'workspace-active',
-        locale === 'ar' ? 'ar' : 'en'
+        workspaceId,
+        locale === 'ar' ? 'ar' : 'en',
+        explicitPeriod
       );
       setResult(res);
     } catch (err) {
@@ -115,7 +129,7 @@ export const NLAnalyticsSection: React.FC = () => {
         </Button>
       </div>
 
-      {/* Suggested Quick Queries */}
+      {/* Quick Reports */}
       <div className="flex flex-wrap items-center gap-1.5 pt-1">
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 me-1">
           {isArabic ? 'استعلامات مقترحة:' : 'Quick Reports:'}
@@ -132,6 +146,31 @@ export const NLAnalyticsSection: React.FC = () => {
             {sq}
           </button>
         ))}
+      </div>
+
+      {/* Explicit Period Selector — overrides NL parsing for determinism */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 me-1 inline-flex items-center gap-1">
+          <CalendarDays className="w-3 h-3" />
+          {isArabic ? 'الفترة:' : 'Period:'}
+        </span>
+        {(['' as const, ...ANALYTICS_PERIODS] as Array<AnalyticsPeriod | ''>).map(p => {
+          const isSel = explicitPeriod === p;
+          return (
+            <button
+              key={p || 'auto'}
+              type="button"
+              onClick={() => setExplicitPeriod(p)}
+              className={`text-[11px] px-2.5 py-1 rounded-full font-medium transition-all shadow-2xs cursor-pointer border ${
+                isSel
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white border-slate-200 text-slate-700 hover:border-brand-gold/60 hover:bg-amber-50/40'
+              }`}
+            >
+              {periodLabels[p]}
+            </button>
+          );
+        })}
       </div>
 
       {/* Result Display */}

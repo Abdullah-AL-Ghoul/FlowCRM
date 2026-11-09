@@ -6,11 +6,12 @@ import { Contact } from '../../types/crm.types';
 import { useCRM } from '../../context/CRMContext';
 import { useI18n } from '../../i18n/I18nContext';
 import { formatCurrency, formatDate } from '../../lib/utils';
-import { Mail, Phone, Building, Briefcase, CheckSquare, Edit, MessageSquare } from 'lucide-react';
+import { Mail, Phone, Building, Briefcase, CheckSquare, Edit, MessageSquare, FileText } from 'lucide-react';
 import { ContactAIPanel } from '../ai/components/ContactAIPanel';
 import { LeadScoreBadge } from '../ai/components/LeadScoreBadge';
 import { LeadScoringService } from '../ai/services/leadScoringService';
 import { AISalesWriterModal } from '../ai/components/AISalesWriterModal';
+import { ContractAnalysisModal } from '../ai/components/ContractAnalysisModal';
 
 export interface ContactDetailModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
   const { deals, tasks, activities } = useCRM();
   const { t, locale } = useI18n();
   const [salesWriterOpen, setSalesWriterOpen] = useState(false);
+  const [contractModalOpen, setContractModalOpen] = useState(false);
 
   if (!contact) return null;
 
@@ -82,6 +84,14 @@ export const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setContractModalOpen(true)}
+                icon={<FileText className="w-3.5 h-3.5 text-brand-gold" />}
+              >
+                {locale === 'ar' ? 'فحص العقد' : 'Review Contract'}
+              </Button>
               <Button
                 variant="gold"
                 size="sm"
@@ -209,6 +219,14 @@ export const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
         isOpen={salesWriterOpen}
         onClose={() => setSalesWriterOpen(false)}
         initialContact={contact}
+      />
+    )}
+
+    {contractModalOpen && (
+      <ContractAnalysisModal
+        isOpen={contractModalOpen}
+        onClose={() => setContractModalOpen(false)}
+        initialContactId={contact.id}
       />
     )}
   </>

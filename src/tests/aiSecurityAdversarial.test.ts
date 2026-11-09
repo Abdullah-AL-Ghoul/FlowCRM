@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   sanitizeUntrustedData,
   wrapUntrustedCRMData,
@@ -7,8 +7,13 @@ import {
   buildSalesWriterPrompt,
 } from '../features/ai/prompts/promptTemplates';
 import { flowAIService } from '../features/ai/services/flowAIService';
+import { crmService } from '../services/crmService';
 
 describe('FlowAI Security, Anti-Injection & Adversarial Robustness', () => {
+  beforeEach(() => {
+    crmService.setDemoMode(true);
+  });
+
   it('strips dangerous HTML scripts from untrusted user inputs', () => {
     const maliciousInput = '<script>alert("hacked")</script>Normal notes here';
     const sanitized = sanitizeUntrustedData(maliciousInput);
@@ -57,9 +62,9 @@ describe('FlowAI Security, Anti-Injection & Adversarial Robustness', () => {
     expect(FLOWAI_SYSTEM_DIRECTIVE).toContain('TRUTHFULNESS & GROUNDING');
   });
 
-  it('tracks workspace usage and enforces hourly quota without crashing', () => {
+  it('tracks workspace usage and enforces hourly quota without crashing', async () => {
     const wsId = `ws-test-${Date.now()}`;
-    const initialUsage = flowAIService.getUsage(wsId);
+    const initialUsage = await flowAIService.getUsage(wsId);
 
     expect(initialUsage.requestsThisHour).toBe(0);
     expect(initialUsage.maxHourlyRequests).toBe(60);

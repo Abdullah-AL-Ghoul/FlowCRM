@@ -13,9 +13,11 @@ import {
   Edit2,
   MessageSquare,
   CheckSquare,
+  FileText,
 } from 'lucide-react';
 import { DealAIPanel } from '../ai/components/DealAIPanel';
 import { AISalesWriterModal } from '../ai/components/AISalesWriterModal';
+import { ContractAnalysisModal } from '../ai/components/ContractAnalysisModal';
 
 export interface DealDetailModalProps {
   isOpen: boolean;
@@ -34,6 +36,7 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({
   const { t, locale } = useI18n();
   const isArabic = locale === 'ar';
   const [salesWriterOpen, setSalesWriterOpen] = useState(false);
+  const [contractModalOpen, setContractModalOpen] = useState(false);
 
   if (!deal) return null;
 
@@ -75,6 +78,14 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setContractModalOpen(true)}
+                icon={<FileText className="w-3.5 h-3.5 text-brand-gold" />}
+              >
+                {isArabic ? 'تحليل العقد' : 'Review Contract'}
+              </Button>
               <Button
                 variant="gold"
                 size="sm"
@@ -156,6 +167,16 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({
           onClose={() => setSalesWriterOpen(false)}
           initialDeal={deal}
           initialContact={deal.contact || null}
+        />
+      )}
+
+      {/* Contract & Document Intelligence */}
+      {contractModalOpen && (
+        <ContractAnalysisModal
+          isOpen={contractModalOpen}
+          onClose={() => setContractModalOpen(false)}
+          initialDealId={deal.id}
+          initialContactId={deal.contact_id || undefined}
         />
       )}
     </>

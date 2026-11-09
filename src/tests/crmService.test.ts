@@ -114,6 +114,35 @@ describe('CRM Service Layer & Live Mock State', () => {
     }
   });
 
+  it('creates, updates, and deletes tasks cleanly', async () => {
+    const newTask = await crmService.createTask(DEMO_WORKSPACE_ID, {
+      title: 'Prepare executive proposal',
+      description: 'Draft the updated terms',
+      due_date: new Date().toISOString(),
+      priority: 'high',
+      status: 'pending',
+      assigned_to: null,
+      contact_id: null,
+      deal_id: null,
+    });
+
+    expect(newTask.id).toBeDefined();
+    expect(newTask.title).toBe('Prepare executive proposal');
+
+    // Update task
+    const updatedTask = await crmService.updateTask(newTask.id, {
+      title: 'Prepare revised executive proposal',
+      priority: 'urgent',
+    });
+    expect(updatedTask.title).toBe('Prepare revised executive proposal');
+    expect(updatedTask.priority).toBe('urgent');
+
+    // Delete task
+    await crmService.deleteTask(newTask.id);
+    const freshTasks = await crmService.getTasks(DEMO_WORKSPACE_ID);
+    expect(freshTasks.find(t => t.id === newTask.id)).toBeUndefined();
+  });
+
   it('records activities and computes timeline records', async () => {
     const activities = await crmService.getActivities(DEMO_WORKSPACE_ID);
     expect(activities.length).toBeGreaterThanOrEqual(16);
@@ -147,5 +176,31 @@ describe('CRM Service Layer & Live Mock State', () => {
     expect(metrics.winRate).toBeLessThanOrEqual(100);
     expect(metrics.tasksDueToday).toBeGreaterThan(0);
     expect(metrics.tasksOverdue).toBeGreaterThan(0);
+  });
+
+  it('safely handles partial updates containing relational join objects on contacts, deals, and tasks', async () => {
+    const allContacts = await crmService.getContacts(DEMO_WORKSPACE_ID);
+    const contact = allContacts[0];
+    const updatedContact = await crmService.updateContact(contact.id, {
+      ...contact,
+      full_name: `${contact.full_name} (Verified)`,
+    });
+    expect(updatedContact.full_name).toContain('(Verified)');
+
+    const allDeals = await crmService.getDeals(DEMO_WORKSPACE_ID);
+    const deal = allDeals[0];
+    const updatedDeal = await crmService.updateDeal(deal.id, {
+      ...deal,
+      value: deal.value + 5000,
+    });
+    expect(updatedDeal.value).toBe(deal.value + 5000);
+
+    const allTasks = await crmService.getTasks(DEMO_WORKSPACE_ID);
+    const task = allTasks[0];
+    const updatedTask = await crmService.updateTask(task.id, {
+      ...task,
+      title: `${task.title} [Updated]`,
+    });
+    expect(updatedTask.title).toContain('[Updated]');
   });
 });

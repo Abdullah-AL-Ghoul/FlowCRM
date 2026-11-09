@@ -16,6 +16,30 @@ export interface PipelineChartProps {
   data: StageSummary[];
 }
 
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload: { name: string; count: number; totalValue: number } }>;
+  locale: string;
+}
+
+const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload, locale }) => {
+  if (active && payload && payload.length) {
+    const d = payload[0].payload;
+    return (
+      <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl text-xs border border-slate-700">
+        <p className="font-bold text-brand-goldPale mb-1">{d.name}</p>
+        <p className="text-slate-300">
+          Deals: <span className="font-semibold text-white">{d.count}</span>
+        </p>
+        <p className="text-slate-300">
+          Value: <span className="font-semibold text-white">{formatCurrency(d.totalValue, 'USD', locale)}</span>
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
 export const PipelineChart: React.FC<PipelineChartProps> = ({ data }) => {
   const { t, locale } = useI18n();
 
@@ -36,24 +60,6 @@ export const PipelineChart: React.FC<PipelineChartProps> = ({ data }) => {
     color: stageColors[item.stage] || '#64748B',
   }));
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const d = payload[0].payload;
-      return (
-        <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl text-xs border border-slate-700">
-          <p className="font-bold text-brand-goldPale mb-1">{d.name}</p>
-          <p className="text-slate-300">
-            Deals: <span className="font-semibold text-white">{d.count}</span>
-          </p>
-          <p className="text-slate-300">
-            Value: <span className="font-semibold text-white">{formatCurrency(d.totalValue, 'USD', locale)}</span>
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
     <div className="w-full h-72">
       <ResponsiveContainer width="100%" height="100%">
@@ -71,7 +77,7 @@ export const PipelineChart: React.FC<PipelineChartProps> = ({ data }) => {
             tickLine={false}
             tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0, 0, 0, 0.04)' }} />
+          <Tooltip content={(props: any) => <CustomTooltip {...props} locale={locale} />} cursor={{ fill: 'rgba(0, 0, 0, 0.04)' }} />
           <Bar dataKey="totalValue" radius={[4, 4, 0, 0]}>
             {chartData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.color} />

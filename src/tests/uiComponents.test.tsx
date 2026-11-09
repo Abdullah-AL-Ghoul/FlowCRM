@@ -6,6 +6,7 @@ import { Button } from '../components/common/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/common/Card';
 import { EmptyState } from '../components/common/EmptyState';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { Input, Select, Textarea } from '../components/common/Input';
 import { I18nProvider, useI18n } from '../i18n/I18nContext';
 import { Users } from 'lucide-react';
 
@@ -105,7 +106,7 @@ describe('UI & UX Components Suite', () => {
     const { rerender } = render(
       <I18nProvider>
         <ConfirmDialog
-          isOpen={true}
+          isOpen
           onClose={handleClose}
           onConfirm={handleConfirm}
           title="Delete Contact"
@@ -165,5 +166,83 @@ describe('UI & UX Components Suite', () => {
     } else {
       expect(titleSpan.textContent).toBe('Sales Overview');
     }
+  });
+
+  it('renders Input with labels, required indicator, error states, and handles change events', () => {
+    const handleChange = vi.fn();
+    const { rerender } = render(
+      <Input
+        label="Full Name"
+        placeholder="Enter your name"
+        required
+        value="Alice Smith"
+        onChange={handleChange}
+      />
+    );
+
+    const input = screen.getByPlaceholderText('Enter your name') as HTMLInputElement;
+    expect(input).toBeDefined();
+    expect(input.value).toBe('Alice Smith');
+    expect(screen.getByText('Full Name')).toBeDefined();
+    expect(screen.getByText('*')).toBeDefined();
+
+    fireEvent.change(input, { target: { value: 'Bob Jones' } });
+    expect(handleChange).toHaveBeenCalled();
+
+    // Rerender with error message
+    rerender(
+      <Input
+        label="Full Name"
+        placeholder="Enter your name"
+        error="Full name is required"
+        value=""
+        onChange={handleChange}
+      />
+    );
+    expect(screen.getByText('Full name is required')).toBeDefined();
+    expect(input.className).toContain('border-rose-500');
+  });
+
+  it('renders Select with options and handles selection change', () => {
+    const handleChange = vi.fn();
+    const options = [
+      { value: 'call', label: 'Phone Call' },
+      { value: 'meeting', label: 'Executive Meeting' },
+    ];
+
+    render(
+      <Select
+        label="Activity Type"
+        options={options}
+        value="call"
+        onChange={handleChange}
+      />
+    );
+
+    expect(screen.getByText('Activity Type')).toBeDefined();
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    expect(select.value).toBe('call');
+
+    fireEvent.change(select, { target: { value: 'meeting' } });
+    expect(handleChange).toHaveBeenCalled();
+  });
+
+  it('renders Textarea with label and handles input', () => {
+    const handleChange = vi.fn();
+    render(
+      <Textarea
+        label="Meeting Notes"
+        placeholder="Enter notes..."
+        value="Initial note"
+        onChange={handleChange}
+      />
+    );
+
+    expect(screen.getByText('Meeting Notes')).toBeDefined();
+    const textarea = screen.getByPlaceholderText('Enter notes...') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('Initial note');
+
+    fireEvent.change(textarea, { target: { value: 'Updated note' } });
+    expect(handleChange).toHaveBeenCalled();
   });
 });

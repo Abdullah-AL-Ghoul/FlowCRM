@@ -70,6 +70,26 @@ export const DealCard: React.FC<DealCardProps> = ({
         ) : null}
       </div>
 
+      {/* Stage Win Probability Progress Bar */}
+      {deal.stage !== 'won' && deal.stage !== 'lost' && (
+        <div className="mt-2">
+          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+            <span>{locale === 'ar' ? 'احتمالية الإغلاق' : 'Win Probability'}</span>
+            <span className="font-semibold text-slate-700">
+              {deal.stage === 'new' ? '15%' : deal.stage === 'qualified' ? '35%' : deal.stage === 'proposal' ? '60%' : '80%'}
+            </span>
+          </div>
+          <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-amber-400 to-brand-gold rounded-full transition-all duration-300"
+              style={{
+                width: deal.stage === 'new' ? '15%' : deal.stage === 'qualified' ? '35%' : deal.stage === 'proposal' ? '60%' : '80%',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Associated Contact & Due Date */}
       <div className="mt-3 space-y-1.5 text-[11px] text-slate-500 border-t border-slate-100 pt-2.5">
         {deal.contact && (

@@ -3,6 +3,7 @@ import { Modal } from '../../../components/common/Modal';
 import { Button } from '../../../components/common/Button';
 import { Badge } from '../../../components/common/Badge';
 import { useCRM } from '../../../context/CRMContext';
+import { useAuth } from '../../../context/AuthContext';
 import { useI18n } from '../../../i18n/I18nContext';
 import { flowAIService } from '../services/flowAIService';
 import { MeetingIntelligenceResult, ProposedTask } from '../types/ai.types';
@@ -16,6 +17,7 @@ import {
   Check,
   Plus,
   ShieldCheck,
+  CircleAlert,
 } from 'lucide-react';
 
 export interface MeetingIntelligenceModalProps {
@@ -28,8 +30,10 @@ export const MeetingIntelligenceModal: React.FC<MeetingIntelligenceModalProps> =
   onClose,
 }) => {
   const { createTask, contacts, deals } = useCRM();
+  const { session } = useAuth();
   const { locale } = useI18n();
   const isArabic = locale === 'ar';
+  const workspaceId = session?.workspace?.id || 'demo-workspace-01';
 
   const [rawNotes, setRawNotes] = useState('');
   const [selectedContactId, setSelectedContactId] = useState('');
@@ -41,6 +45,11 @@ export const MeetingIntelligenceModal: React.FC<MeetingIntelligenceModalProps> =
   const [tasksCreatedCount, setTasksCreatedCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const unavailableReason = result?.unavailableReason || null;
+  const selectedCount = tasksToCreate.filter(t => t.selected).length;
+  const selectedMissingDueDate = tasksToCreate.filter(t => t.selected && !t.suggestedDueDate).length;
+  const canCreateTasks = selectedCount > 0 && selectedMissingDueDate === 0;
+
   const handleAnalyze = async () => {
     if (!rawNotes.trim()) return;
     setLoading(true);
@@ -50,8 +59,9 @@ export const MeetingIntelligenceModal: React.FC<MeetingIntelligenceModalProps> =
     try {
       const analyzed = await flowAIService.analyzeMeetingNotes(
         rawNotes,
-        'workspace-active',
-        locale === 'ar' ? 'ar' : 'en'
+        workspaceId,
+        locale === 'ar' ? 'ar' : 'en',
+        { contactId: selectedContactId || null, dealId: selectedDealId || null }
       );
       setResult(analyzed);
       setTasksToCreate(analyzed.proposedTasks);
@@ -78,6 +88,17 @@ export const MeetingIntelligenceModal: React.FC<MeetingIntelligenceModalProps> =
     const selected = tasksToCreate.filter(t => t.selected);
     if (selected.length === 0) return;
 
+    // Guard: never invent a due date. Tasks without an explicit date are
+    // highlighted in red and the create action stays disabled until set.
+    if (selected.some(t => !t.suggestedDueDate)) {
+      setError(
+        isArabic
+          ? 'حدد تاريخ استحقاق صريحًا لكل مهمة مختارة قبل الإنشاء.'
+          : 'Set an explicit due date for every selected task before creating it.'
+      );
+      return;
+    }
+
     setCreatingTasks(true);
     let count = 0;
 
@@ -88,12 +109,12 @@ export const MeetingIntelligenceModal: React.FC<MeetingIntelligenceModalProps> =
           description: item.description || 'Extracted via FlowAI Meeting Intelligence',
           due_date: item.suggestedDueDate
             ? new Date(item.suggestedDueDate).toISOString()
-            : new Date(Date.now() + 86400000 * 2).toISOString(),
+            : new Date().toISOString(),
           priority: item.priority,
           status: 'pending',
           contact_id: selectedContactId || null,
           deal_id: selectedDealId || null,
-          assigned_to: null,
+          assigned_to: item.suggestedAssigneeId || null,
         });
         count++;
       }
@@ -205,8 +226,24 @@ export const MeetingIntelligenceModal: React.FC<MeetingIntelligenceModalProps> =
           </div>
         )}
 
+        {/* Honest unavailability notice (e.g. no provider key configured) */}
+        {unavailableReason && (
+          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+            <CircleAlert className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold">{isArabic ? 'تحليل الاجتماع غير متاح' : 'Meeting analysis unavailable'}</p>
+              <p className="leading-relaxed">{unavailableReason}</p>
+              <p className="text-[10px] text-amber-800/90 mt-1">
+                {isArabic
+                  ? 'لا يتم تخمين المهام أو القرارات عندما تكون النموذج اللغوي غير مهيأ — أضف مفتاح المزود على الخادم لتفعيل الاستخلاص.'
+                  : 'Tasks or decisions are never guessed when the LLM is not connected — configure a provider key on the server to enable extraction.'}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Results Sections */}
-        {result && (
+        {result && !unavailableReason && (
           <div className="space-y-5 pt-4 border-t border-slate-200">
             {/* Executive Summary */}
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/90 space-y-1.5">
@@ -316,12 +353,26 @@ export const MeetingIntelligenceModal: React.FC<MeetingIntelligenceModalProps> =
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <div className="flex items-center gap-1 text-[11px] text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+                      <div
+                        className={`flex items-center gap-1 text-[11px] text-slate-600 px-2 py-1 rounded border ${
+                          task.selected && !task.suggestedDueDate
+                            ? 'bg-rose-50 border-rose-300'
+                            : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
                         <Calendar className="w-3 h-3 text-slate-400" />
                         <input
                           type="date"
                           value={task.suggestedDueDate || ''}
                           onChange={e => updateTaskField(task.id, 'suggestedDueDate', e.target.value)}
+                          required
+                          title={
+                            task.selected && !task.suggestedDueDate
+                              ? isArabic
+                                ? 'مطلوب: حدد تاريخ الاستحقاق'
+                                : 'Required: set a due date'
+                              : undefined
+                          }
                           className="bg-transparent text-[11px] focus:outline-none"
                         />
                       </div>
@@ -354,7 +405,13 @@ export const MeetingIntelligenceModal: React.FC<MeetingIntelligenceModalProps> =
                   </span>
                 ) : (
                   <span className="text-[11px] text-slate-400">
-                    {tasksToCreate.filter(t => t.selected).length} tasks selected for creation
+                    {selectedCount}{' '}
+                    {isArabic ? 'مهام مختارة للإنشاء' : 'tasks selected for creation'}
+                    {selectedMissingDueDate > 0 && (
+                      <span className="text-rose-600 font-semibold ms-1">
+                        ({selectedMissingDueDate} {isArabic ? 'بلا تاريخ استحقاق' : 'missing due date'})
+                      </span>
+                    )}
                   </span>
                 )}
 
@@ -362,7 +419,7 @@ export const MeetingIntelligenceModal: React.FC<MeetingIntelligenceModalProps> =
                   variant="gold"
                   size="sm"
                   onClick={handleCreateApprovedTasks}
-                  disabled={creatingTasks || tasksToCreate.filter(t => t.selected).length === 0}
+                  disabled={creatingTasks || !canCreateTasks}
                   icon={creatingTasks ? <Sparkles className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                 >
                   {creatingTasks

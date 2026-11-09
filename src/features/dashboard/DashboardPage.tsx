@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useCRM } from '../../context/CRMContext';
 import { useI18n } from '../../i18n/I18nContext';
 import { MetricCard } from './MetricCard';
@@ -7,6 +7,12 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../components/commo
 import { Button } from '../../components/common/Button';
 import { Skeleton } from '../../components/common/Skeleton';
 import { formatCurrency, formatDateTime } from '../../lib/utils';
+import {
+  resolvePeriodWindow,
+  isTimestampInWindow,
+  computeDashboardMetrics,
+  computePipelineStageBreakdown,
+} from '../../../supabase/functions/_shared/metrics';
 import {
   Users,
   Briefcase,
@@ -24,11 +30,58 @@ import { ContactFormModal } from '../contacts/ContactFormModal';
 import { DealFormModal } from '../deals/DealFormModal';
 
 export const DashboardPage: React.FC = () => {
-  const { metrics, stageBreakdown, activities, loading } = useCRM();
+  const { contacts, deals, tasks, activities, metrics, stageBreakdown, loading } = useCRM();
   const { t, locale } = useI18n();
 
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [dealModalOpen, setDealModalOpen] = useState(false);
+  const [timeframe, setTimeframe] = useState<'all_time' | 'this_month' | 'last_month' | 'this_quarter'>('all_time');
+  const [activityFilter, setActivityFilter] = useState<'all' | 'call' | 'email' | 'meeting' | 'stage_change'>('all');
+
+  // Dynamically compute KPIs according to chosen timeframe using the shared math engine
+  const activeMetrics = useMemo(() => {
+    if (timeframe === 'all_time' || !contacts || !deals || !tasks) {
+      return metrics;
+    }
+    const win = resolvePeriodWindow(timeframe);
+    const winDeals = deals.filter(d => isTimestampInWindow(d.created_at, win));
+    const winContacts = contacts.filter(c => isTimestampInWindow(c.created_at, win));
+    const winTasks = tasks.filter(t => isTimestampInWindow(t.created_at, win) || isTimestampInWindow(t.due_date, win));
+
+    const computed = computeDashboardMetrics({
+      contacts: winContacts,
+      deals: winDeals,
+      tasks: winTasks,
+      currency: 'USD',
+      locale: locale === 'ar' ? 'ar' : 'en',
+    });
+
+    return {
+      totalContacts: computed.totalContacts,
+      activeDealsCount: computed.activeDealsCount,
+      openPipelineValue: computed.openPipelineValue,
+      wonDealsCount: computed.wonDealsCount,
+      wonDealsValue: computed.wonDealsValue,
+      winRate: computed.winRate,
+      tasksDueToday: computed.tasksDueToday,
+      tasksOverdue: computed.tasksOverdue,
+    };
+  }, [timeframe, metrics, contacts, deals, tasks, locale]);
+
+  // Dynamically compute stage breakdown for chosen timeframe
+  const activeBreakdown = useMemo(() => {
+    if (timeframe === 'all_time' || !deals) {
+      return stageBreakdown;
+    }
+    const win = resolvePeriodWindow(timeframe);
+    const winDeals = deals.filter(d => isTimestampInWindow(d.created_at, win));
+    return computePipelineStageBreakdown(winDeals, 'USD', locale === 'ar' ? 'ar' : 'en');
+  }, [timeframe, stageBreakdown, deals, locale]);
+
+  const filteredActivities = useMemo(() => {
+    if (activityFilter === 'all') return activities;
+    return activities.filter(a => a.type === activityFilter);
+  }, [activities, activityFilter]);
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -45,7 +98,7 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  if (loading || !metrics) {
+  if (loading || !metrics || !activeMetrics) {
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -78,7 +131,30 @@ export const DashboardPage: React.FC = () => {
             {t('dashboard.subtitle')}
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Timeframe Selector Pills */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-medium border border-slate-200/90 shadow-2xs">
+            {[
+              { id: 'all_time', labelEn: 'All Time', labelAr: 'الكل' },
+              { id: 'this_month', labelEn: 'This Month', labelAr: 'هذا الشهر' },
+              { id: 'last_month', labelEn: 'Last Month', labelAr: 'الشهر الماضي' },
+              { id: 'this_quarter', labelEn: 'This Quarter', labelAr: 'هذا الربع' },
+            ].map(tf => (
+              <button
+                key={tf.id}
+                type="button"
+                onClick={() => setTimeframe(tf.id as any)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  timeframe === tf.id
+                    ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/80'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                {locale === 'ar' ? tf.labelAr : tf.labelEn}
+              </button>
+            ))}
+          </div>
+
           <Button
             variant="outline"
             size="sm"
@@ -102,31 +178,31 @@ export const DashboardPage: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title={t('dashboard.totalContacts')}
-          value={metrics.totalContacts}
-          subtitle="Qualified accounts & leads"
+          value={activeMetrics.totalContacts}
+          subtitle={locale === 'ar' ? 'العملاء والفرص المسجلة' : 'Qualified accounts & leads'}
           icon={Users}
         />
         <MetricCard
           title={t('dashboard.activeDeals')}
-          value={metrics.activeDealsCount}
-          subtitle={`Pipeline: ${formatCurrency(metrics.openPipelineValue, 'USD', locale)}`}
+          value={activeMetrics.activeDealsCount}
+          subtitle={`Pipeline: ${formatCurrency(activeMetrics.openPipelineValue, 'USD', locale)}`}
           icon={Briefcase}
           highlight
         />
         <MetricCard
           title={t('dashboard.wonDeals')}
-          value={metrics.wonDealsCount}
-          subtitle={`Win rate: ${metrics.winRate}% (${formatCurrency(metrics.wonDealsValue, 'USD', locale)})`}
+          value={activeMetrics.wonDealsCount}
+          subtitle={`Win rate: ${activeMetrics.winRate}% (${formatCurrency(activeMetrics.wonDealsValue, 'USD', locale)})`}
           icon={TrendingUp}
         />
         <MetricCard
           title={t('dashboard.tasksDueToday')}
-          value={metrics.tasksDueToday}
-          subtitle={`${metrics.tasksOverdue} overdue follow-ups`}
+          value={activeMetrics.tasksDueToday}
+          subtitle={`${activeMetrics.tasksOverdue} overdue follow-ups`}
           icon={Clock}
           trend={
-            metrics.tasksOverdue > 0
-              ? { value: `${metrics.tasksOverdue} overdue`, positive: false }
+            activeMetrics.tasksOverdue > 0
+              ? { value: `${activeMetrics.tasksOverdue} overdue`, positive: false }
               : undefined
           }
         />
@@ -149,8 +225,8 @@ export const DashboardPage: React.FC = () => {
             </div>
             <p className="text-xs text-slate-300 mt-1 leading-relaxed">
               {locale === 'ar'
-                ? `لديك ${metrics.activeDealsCount} صفقة نشطة بقيمة ${formatCurrency(metrics.openPipelineValue, 'USD', locale)}، مع ${metrics.tasksOverdue} مهام متأخرة تتطلب المتابعة الفورية لضمان نسبة إغلاق مثالية.`
-                : `Active pipeline stands at ${metrics.activeDealsCount} opportunities worth ${formatCurrency(metrics.openPipelineValue, 'USD', locale)}. ${metrics.tasksOverdue > 0 ? `${metrics.tasksOverdue} follow-ups are currently overdue.` : 'All task follow-ups are on schedule.'}`}
+                ? `لديك ${activeMetrics.activeDealsCount} صفقة نشطة بقيمة ${formatCurrency(activeMetrics.openPipelineValue, 'USD', locale)}، مع ${activeMetrics.tasksOverdue} مهام متأخرة تتطلب المتابعة الفورية لضمان نسبة إغلاق مثالية.`
+                : `Active pipeline stands at ${activeMetrics.activeDealsCount} opportunities worth ${formatCurrency(activeMetrics.openPipelineValue, 'USD', locale)}. ${activeMetrics.tasksOverdue > 0 ? `${activeMetrics.tasksOverdue} follow-ups are currently overdue.` : 'All task follow-ups are on schedule.'}`}
             </p>
           </div>
         </div>
@@ -163,27 +239,42 @@ export const DashboardPage: React.FC = () => {
           <CardHeader>
             <CardTitle>{t('dashboard.pipelineDistribution')}</CardTitle>
             <span className="text-xs text-slate-500 font-medium">
-              Total Open: {formatCurrency(metrics.openPipelineValue, 'USD', locale)}
+              Total Open: {formatCurrency(activeMetrics.openPipelineValue, 'USD', locale)}
             </span>
           </CardHeader>
           <CardContent>
-            <PipelineChart data={stageBreakdown} />
+            <PipelineChart data={activeBreakdown} />
           </CardContent>
         </Card>
 
         {/* Recent Activities Feed */}
         <Card>
           <CardHeader>
-            <CardTitle>{t('dashboard.recentActivity')}</CardTitle>
+            <div className="flex items-center justify-between w-full">
+              <CardTitle>{t('dashboard.recentActivity')}</CardTitle>
+              {/* Activity Filter */}
+              <select
+                value={activityFilter}
+                onChange={e => setActivityFilter(e.target.value as any)}
+                className="text-[11px] font-medium bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 text-slate-600 focus:outline-none focus:border-brand-gold cursor-pointer"
+                aria-label="Filter activity type"
+              >
+                <option value="all">{locale === 'ar' ? 'جميع الأنشطة' : 'All types'}</option>
+                <option value="call">{locale === 'ar' ? 'مكالمات' : 'Calls'}</option>
+                <option value="email">{locale === 'ar' ? 'إيميل' : 'Emails'}</option>
+                <option value="meeting">{locale === 'ar' ? 'اجتماعات' : 'Meetings'}</option>
+                <option value="stage_change">{locale === 'ar' ? 'تغييرات المراحل' : 'Stage Changes'}</option>
+              </select>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
-            {activities.length === 0 ? (
+            {filteredActivities.length === 0 ? (
               <p className="p-6 text-xs text-slate-500 text-center">
                 {t('dashboard.noActivitiesYet')}
               </p>
             ) : (
               <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
-                {activities.slice(0, 6).map(act => (
+                {filteredActivities.slice(0, 6).map(act => (
                   <div key={act.id} className="p-4 hover:bg-slate-50/80 transition-colors">
                     <div className="flex items-start gap-3">
                       <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 mt-0.5">

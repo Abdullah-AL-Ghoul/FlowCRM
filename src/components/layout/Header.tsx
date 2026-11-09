@@ -2,13 +2,15 @@ import React from 'react';
 import { useI18n } from '../../i18n/I18nContext';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../common/Button';
-import { Globe, LogOut, Menu, Sparkles, Database, FileText } from 'lucide-react';
+import { Globe, LogOut, Menu, Sparkles, Database, FileText, Scale, Search } from 'lucide-react';
 
 export interface HeaderProps {
   onToggleMobileNav: () => void;
   onToggleCopilot?: () => void;
   onOpenMeetingModal?: () => void;
   onOpenSalesWriter?: () => void;
+  onOpenContractModal?: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -16,6 +18,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleCopilot,
   onOpenMeetingModal,
   onOpenSalesWriter,
+  onOpenContractModal,
+  onOpenCommandPalette,
 }) => {
   const { locale, setLocale, t } = useI18n();
   const { session, signOut } = useAuth();
@@ -49,7 +53,37 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           )}
         </div>
+
+        {/* Mobile Search Icon Trigger */}
+        {onOpenCommandPalette && (
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="md:hidden p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+            aria-label={locale === 'ar' ? 'بحث' : 'Search'}
+          >
+            <Search className="w-4 h-4" />
+          </button>
+        )}
       </div>
+
+      {/* Center: Desktop Omnisearch Trigger */}
+      {onOpenCommandPalette && (
+        <button
+          type="button"
+          onClick={onOpenCommandPalette}
+          className="hidden md:flex items-center gap-2.5 px-3.5 py-1.5 text-xs text-slate-500 bg-slate-50 hover:bg-slate-100 hover:text-slate-800 border border-slate-200/90 rounded-xl transition-all cursor-pointer shadow-xs max-w-xs lg:max-w-sm w-full mx-4"
+          aria-label={locale === 'ar' ? 'البحث الشامل (Ctrl+K)' : 'Omnisearch (Ctrl+K)'}
+        >
+          <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <span className="flex-1 text-start truncate">
+            {locale === 'ar' ? 'البحث في النظام أو الانتقال...' : 'Search CRM or navigate...'}
+          </span>
+          <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 bg-white border border-slate-200 rounded shadow-2xs font-mono shrink-0">
+            ⌘K
+          </kbd>
+        </button>
+      )}
 
       {/* Right side: Actions & User Controls */}
       <div className="flex items-center gap-2 sm:gap-3">
@@ -64,6 +98,20 @@ export const Header: React.FC<HeaderProps> = ({
             title={locale === 'ar' ? 'تحليل محضر اجتماع' : 'Analyze Meeting Notes'}
           >
             <span>{locale === 'ar' ? 'محاضر الاجتماعات' : 'Meeting Notes'}</span>
+          </Button>
+        )}
+
+        {/* Contract Intelligence Action */}
+        {onOpenContractModal && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenContractModal}
+            icon={<Scale className="w-3.5 h-3.5 text-amber-600" />}
+            className="text-xs hidden lg:inline-flex"
+            title={locale === 'ar' ? 'تحليل وفحص العقود' : 'Contract Intelligence'}
+          >
+            <span>{locale === 'ar' ? 'تحليل العقود' : 'Contracts'}</span>
           </Button>
         )}
 
@@ -109,7 +157,9 @@ export const Header: React.FC<HeaderProps> = ({
         <Button
           variant="ghost"
           size="sm"
-          onClick={signOut}
+          onClick={() => {
+            void signOut();
+          }}
           icon={<LogOut className="w-4 h-4 text-slate-500" />}
           className="text-xs text-slate-600"
         >

@@ -58,8 +58,8 @@ export const LandingPage: React.FC = () => {
           a: 'FlowAI لا يخمن ولا يهلوس أبداً. هو محرك ذكاء مبيعات مؤرض (Grounded) يستدعي أدوات أعمال محددة ومحصورة للقراءة فقط من سجلات الـ CRM المعتمدة، ويعيد روابط استشهادية قابلة للنقر مع كل إجابة.',
         },
         {
-          q: 'هل يمكن لكل مستخدم في فريقي إضافة مفتاح الـ API الخاص به بشكل مستقل؟',
-          a: 'نعم تماماً! نوفر نظام حماية على مستوى الصفوف (RLS) في قاعدة البيانات يتيح لكل مستخدم إدخال مفتاح Gemini أو OpenAI الخاص به، وتخزينه مشفراً دون أن يتمكن أي عضو آخر في الفريق أو مساحة العمل من رؤيته.',
+          q: 'كيف يتم حماية مفاتيح الذكاء الاصطناعي وبيانات الشركة؟',
+          a: 'نتبع معيار أمان صارم: لا توجد أي مفاتيح مزودين في المتصفح. تُدار مفاتيح Gemini وOpenAI حصرياً كأسرار مشفرة على مستوى خوادم Edge Functions مع سياسات RLS وقواعد استهلاك محددة تمنع أي تسريب أو وصول غير مصرح به.',
         },
         {
           q: 'هل يدعم النظام اللغة العربية بالكامل؟',
@@ -80,8 +80,8 @@ export const LandingPage: React.FC = () => {
           a: 'FlowAI never hallucinates. It is a strictly grounded CRM intelligence engine that queries verified, read-only tools scoped to your active workspace, returning clickable citation links for every fact and metric.',
         },
         {
-          q: 'Can each sales rep manage their own AI API keys independently?',
-          a: 'Yes! We built a dedicated database table protected by Row-Level Security (RLS). Each user can store their own Google Gemini or OpenAI keys privately, isolated from other workspace members.',
+          q: 'How are AI provider credentials and company data protected?',
+          a: 'We enforce a strict Zero-Secret client architecture: no provider keys ever reach the browser. Gemini and OpenAI credentials reside exclusively in secure Edge Function secrets, protected by strict RLS and quota enforcement.',
         },
         {
           q: 'Is full Arabic RTL supported?',

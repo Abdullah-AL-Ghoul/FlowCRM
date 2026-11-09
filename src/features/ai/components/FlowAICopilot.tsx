@@ -46,6 +46,19 @@ export const FlowAICopilot: React.FC<FlowAICopilotProps> = ({ isOpen, onClose })
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const [engineLabel, setEngineLabel] = useState<'gemini' | 'openai' | 'anthropic' | 'grounded' | null>(null);
+
+  // Cancel any in-flight AI request when the drawer closes or unmounts.
+  useEffect(() => {
+    if (!isOpen) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    }
+  }, [isOpen]);
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -60,12 +73,16 @@ export const FlowAICopilot: React.FC<FlowAICopilotProps> = ({ isOpen, onClose })
   const quickPrompts = isArabic
     ? [
         { label: 'ما هي المتابعات المتأخرة؟', query: 'Which follow-ups are overdue?' },
+        { label: 'ما هي الصفقات التي تحتاج اهتماماً؟', query: 'Which open deals need attention?' },
+        { label: 'عملاء بدون تفاعل مؤخراً', query: 'Show contacts with no recorded interaction during the last 30 days' },
         { label: 'شرح خط أنابيب المبيعات', query: 'Explain the current sales pipeline' },
         { label: 'ما هي أولويات مهام اليوم؟', query: 'Which tasks should I prioritize today?' },
         { label: 'ملخص أداء المبيعات', query: 'Summarize sales performance' },
       ]
     : [
         { label: 'Overdue follow-ups', query: 'Which follow-ups are overdue?' },
+        { label: 'Open deals needing attention', query: 'Which open deals need attention?' },
+        { label: 'Contacts without recent activity', query: 'Show contacts with no recorded interaction during the last 30 days' },
         { label: 'Explain sales pipeline', query: 'Explain the current sales pipeline' },
         { label: 'Prioritize today’s tasks', query: 'Which tasks should I prioritize today?' },
         { label: 'Sales performance summary', query: 'Summarize sales performance' },
@@ -75,6 +92,11 @@ export const FlowAICopilot: React.FC<FlowAICopilotProps> = ({ isOpen, onClose })
     const trimmed = userText.trim();
     if (!trimmed || loading) return;
 
+    // Supersede any in-flight request so answers stay sequential + cancellable.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -82,29 +104,75 @@ export const FlowAICopilot: React.FC<FlowAICopilotProps> = ({ isOpen, onClose })
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    const assistantMsgId = `ai-${Date.now()}`;
+    const initialAssistantMsg: ChatMessage = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      evidence: [],
+      isAiGenerated: true,
+      engine: 'rules',
+    };
+
+    setMessages(prev => [...prev, userMsg, initialAssistantMsg]);
     setInput('');
     setLoading(true);
 
     try {
-      const response = await flowAIService.askCopilot({
-        message: trimmed,
-        workspaceId,
-        locale,
-        chatHistory: messages,
-      });
+      const response = await flowAIService.askCopilotStream(
+        {
+          message: trimmed,
+          workspaceId,
+          locale,
+          signal: controller.signal,
+        },
+        {
+          onChunk: (chunk: string) => {
+            setMessages(prev =>
+              prev.map(m => (m.id === assistantMsgId ? { ...m, content: m.content + chunk } : m))
+            );
+          },
+          onInit: init => {
+            if (init.engine === 'gemini' || init.engine === 'openai' || init.engine === 'anthropic') {
+              setEngineLabel(init.engine);
+            } else {
+              setEngineLabel('grounded');
+            }
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === assistantMsgId
+                  ? {
+                      ...m,
+                      evidence: init.evidence,
+                      engine: (init.engine as any) || 'rules',
+                    }
+                  : m
+              )
+            );
+          },
+        }
+      );
 
-      const assistantMsg: ChatMessage = {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: response.reply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        evidence: response.evidence,
-        isAiGenerated: true,
-      };
-
-      setMessages(prev => [...prev, assistantMsg]);
+      // Final update to guarantee complete evidence & text
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === assistantMsgId
+            ? {
+                ...m,
+                content: m.content || response.reply,
+                evidence: response.evidence,
+                engine: response.demoOffline ? 'rules' : response.engine,
+              }
+            : m
+        )
+      );
     } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.code === 'aborted') {
+        // Superseded by a newer request — silently ignore.
+        return;
+      }
+      setMessages(prev => prev.filter(m => m.id !== assistantMsgId));
       const errorMsg: ChatMessage = {
         id: `err-${Date.now()}`,
         role: 'assistant',
@@ -116,6 +184,9 @@ export const FlowAICopilot: React.FC<FlowAICopilotProps> = ({ isOpen, onClose })
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
       setLoading(false);
     }
   };
@@ -139,8 +210,6 @@ export const FlowAICopilot: React.FC<FlowAICopilotProps> = ({ isOpen, onClose })
       },
     ]);
   };
-
-  const activeAdapter = flowAIService.getActiveAdapter();
 
   if (!isOpen) return null;
 
@@ -172,7 +241,17 @@ export const FlowAICopilot: React.FC<FlowAICopilotProps> = ({ isOpen, onClose })
               <div className="flex items-center gap-1.5">
                 <h3 className="text-sm font-bold tracking-tight">FlowAI Copilot</h3>
                 <span className="text-[10px] px-1.5 py-0.2 bg-brand-gold/20 text-brand-goldPale rounded border border-brand-gold/40 font-medium">
-                  {activeAdapter.id === 'offline_rule_based' ? 'Grounded Mode' : activeAdapter.name}
+                  {engineLabel === 'gemini'
+                    ? 'Gemini Engine'
+                    : engineLabel === 'openai'
+                    ? 'OpenAI Engine'
+                    : engineLabel === 'grounded'
+                    ? isArabic
+                      ? 'وضع الاستنتاج الموثق'
+                      : 'Grounded Mode'
+                    : isArabic
+                    ? 'مؤشرات الموثوقية'
+                    : 'Evidence-Grounded'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
@@ -251,11 +330,24 @@ export const FlowAICopilot: React.FC<FlowAICopilotProps> = ({ isOpen, onClose })
                         <Sparkles className="w-2.5 h-2.5" />
                         FlowAI
                       </span>
+                      {(msg.engine === 'gemini' || msg.engine === 'openai' || msg.engine === 'anthropic') && (
+                        <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">
+                          {msg.engine}
+                        </span>
+                      )}
                       <span>{msg.timestamp}</span>
                     </div>
                   )}
 
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  <div className="whitespace-pre-wrap">
+                    {msg.content || (
+                      <span className="inline-flex items-center gap-1.5 text-slate-400 py-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-bounce" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-bounce [animation-delay:0.15s]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-bounce [animation-delay:0.3s]" />
+                      </span>
+                    )}
+                  </div>
 
                   {msg.role === 'assistant' && (
                     <div className="mt-2 flex items-center justify-end">

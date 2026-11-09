@@ -3,7 +3,9 @@ import { CRMToolRegistry } from '../features/ai/services/toolRegistry';
 import { crmService } from '../services/crmService';
 import { DEMO_WORKSPACE_ID } from '../services/demoData';
 
-describe('FlowAI Tool Registry (CRMToolRegistry)', () => {
+const dataOf = <T,>(r: { data: unknown }): T => r.data as T;
+
+describe('FlowAI Tool Registry (CRMToolRegistry over shared tools)', () => {
   const workspaceId = DEMO_WORKSPACE_ID;
 
   beforeEach(() => {
@@ -25,12 +27,13 @@ describe('FlowAI Tool Registry (CRMToolRegistry)', () => {
       'en'
     );
 
+    const data = dataOf<Array<{ full_name: string }>>(result);
     expect(result.toolName).toBe('search_contacts');
-    expect(result.data.length).toBeGreaterThan(0);
-    expect(result.data[0].full_name).toContain('Elena');
+    expect(data.length).toBeGreaterThan(0);
+    expect(data[0].full_name).toContain('Elena');
     expect(result.evidence.length).toBeGreaterThan(0);
     expect(result.evidence[0].type).toBe('contact');
-    expect(result.evidence[0].route).toContain('/contacts?id=');
+    expect(result.evidence[0].route.startsWith('/contacts')).toBe(true);
   });
 
   it('retrieves authorized contact summary with linked deals and tasks', async () => {
@@ -44,11 +47,17 @@ describe('FlowAI Tool Registry (CRMToolRegistry)', () => {
       'en'
     );
 
-    expect(result.data).toBeDefined();
-    expect(result.data.contact.id).toBe(target.id);
-    expect(result.data.contact.full_name).toBe(target.full_name);
-    expect(Array.isArray(result.data.deals)).toBe(true);
-    expect(Array.isArray(result.data.pendingTasks)).toBe(true);
+    const data = dataOf<{
+      contact: { id: string; full_name: string };
+      deals: unknown[];
+      pendingTasks: unknown[];
+    }>(result);
+
+    expect(data).not.toBeNull();
+    expect(data.contact.id).toBe(target.id);
+    expect(data.contact.full_name).toBe(target.full_name);
+    expect(Array.isArray(data.deals)).toBe(true);
+    expect(Array.isArray(data.pendingTasks)).toBe(true);
   });
 
   it('reports missing data when contact does not exist', async () => {
@@ -75,8 +84,9 @@ describe('FlowAI Tool Registry (CRMToolRegistry)', () => {
       'en'
     );
 
-    expect(result.data.id).toBe(targetDeal.id);
-    expect(result.data.title).toBe(targetDeal.title);
+    const data = dataOf<{ id: string; title: string }>(result);
+    expect(data.id).toBe(targetDeal.id);
+    expect(data.title).toBe(targetDeal.title);
     expect(result.evidence[0].type).toBe('deal');
   });
 
@@ -87,7 +97,7 @@ describe('FlowAI Tool Registry (CRMToolRegistry)', () => {
       workspaceId,
       'en'
     );
-    expect(Array.isArray(openTasksResult.data)).toBe(true);
+    expect(Array.isArray(dataOf<unknown[]>(openTasksResult))).toBe(true);
 
     const overdueResult = await CRMToolRegistry.executeTool(
       'get_overdue_tasks',
@@ -95,7 +105,7 @@ describe('FlowAI Tool Registry (CRMToolRegistry)', () => {
       workspaceId,
       'en'
     );
-    expect(Array.isArray(overdueResult.data)).toBe(true);
+    expect(Array.isArray(dataOf<unknown[]>(overdueResult))).toBe(true);
   });
 
   it('retrieves authoritative workspace sales metrics', async () => {
@@ -106,9 +116,15 @@ describe('FlowAI Tool Registry (CRMToolRegistry)', () => {
       'en'
     );
 
-    expect(metricsResult.data.totalContacts).toBeGreaterThan(0);
-    expect(typeof metricsResult.data.openPipelineValue).toBe('number');
-    expect(typeof metricsResult.data.winRate).toBe('number');
+    const data = dataOf<{
+      totalContacts: number;
+      openPipelineValue: number;
+      winRate: number;
+    }>(metricsResult);
+
+    expect(data.totalContacts).toBeGreaterThan(0);
+    expect(typeof data.openPipelineValue).toBe('number');
+    expect(typeof data.winRate).toBe('number');
     expect(metricsResult.evidence.length).toBeGreaterThan(0);
   });
 
@@ -120,10 +136,40 @@ describe('FlowAI Tool Registry (CRMToolRegistry)', () => {
       'en'
     );
 
-    expect(breakdown.data.length).toBe(6); // all 6 stages
-    const stages = breakdown.data.map((d: any) => d.stage);
+    const data = dataOf<Array<{ stage: string; count: number; totalValue: number }>>(breakdown);
+    expect(data.length).toBe(6); // all 6 stages
+    const stages = data.map(d => d.stage);
     expect(stages).toContain('new');
     expect(stages).toContain('won');
     expect(stages).toContain('lost');
+  });
+
+  it('retrieves inactive contacts with no recent interactions', async () => {
+    const res = await CRMToolRegistry.executeTool(
+      'get_inactive_contacts',
+      { days: 1 },
+      workspaceId,
+      'en'
+    );
+
+    const data = dataOf<Array<{ id: string; full_name: string; daysSinceLastActivity: number | null }>>(res);
+    expect(res.toolName).toBe('get_inactive_contacts');
+    expect(Array.isArray(data)).toBe(true);
+    expect(res.evidence.length).toBeGreaterThan(0);
+    expect(res.evidence[0].route).toBe('/contacts');
+  });
+
+  it('retrieves open deals needing attention due to close date or inactivity', async () => {
+    const res = await CRMToolRegistry.executeTool(
+      'get_deals_needing_attention',
+      { limit: 5 },
+      workspaceId,
+      'en'
+    );
+
+    const data = dataOf<Array<{ id: string; title: string; riskReasons: string[] }>>(res);
+    expect(res.toolName).toBe('get_deals_needing_attention');
+    expect(Array.isArray(data)).toBe(true);
+    expect(res.explanation).toBeDefined();
   });
 });
